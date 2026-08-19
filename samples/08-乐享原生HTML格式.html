@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>测试08 - 乐享原生HTML格式</title>
+</head>
+<body>
+<h1>测试用例 08：乐享原生 HTML 格式（lx-* 类名回环导入）</h1>
+<p>本文件使用乐享导出内容时采用的 <code>lx-*</code> 类名格式（即通过 <code>GET /kb/entries/{id}/content?content_type=html</code> 导出的格式），验证"乐享自有 HTML 格式"能否被回环导入并保真。</p>
+
+<div class="lx-doc">
+  <h2 class="lx-h2">一、段落与标题</h2>
+  <p class="lx-p">这是乐享原生格式的段落（lx-p）。</p>
+  <h3 class="lx-h3">三级标题（lx-h3）</h3>
+  <p class="lx-p">乐享 HTML 使用 <code class="lx-code">lx-</code> 前缀类名标识块类型，如 lx-p、lx-h2、lx-ul、lx-table 等。</p>
+
+  <h2 class="lx-h2">二、列表</h2>
+  <ul class="lx-ul">
+    <li class="lx-li">无序项 A（lx-ul / lx-li）</li>
+    <li class="lx-li">无序项 B</li>
+  </ul>
+  <ol class="lx-ol">
+    <li class="lx-li">有序项 1（lx-ol / lx-li）</li>
+    <li class="lx-li">有序项 2</li>
+  </ol>
+
+  <h2 class="lx-h2">三、表格</h2>
+  <table class="lx-table">
+    <thead><tr><th>列1</th><th>列2</th></tr></thead>
+    <tbody>
+      <tr><td>A1</td><td>A2</td></tr>
+      <tr><td>B1</td><td>B2</td></tr>
+    </tbody>
+  </table>
+
+  <h2 class="lx-h2">四、代码块</h2>
+  <pre class="lx-code"><code>const x = 1;
+console.log(x);</code></pre>
+
+  <h2 class="lx-h2">五、高亮块（callout）</h2>
+  <div class="lx-callout">
+    <p class="lx-p">这是一个高亮块（lx-callout），对应 Markdown 中的引用提示块。</p>
+  </div>
+
+  <h2 class="lx-h2">六、分隔线</h2>
+  <hr class="lx-divider">
+
+  <h2 class="lx-h2">七、图片块</h2>
+  <p class="lx-p">乐享原生格式中图片通常以特定结构承载。此处放普通 img 验证 lx 文档内图片处理：</p>
+  <img src="https://picsum.photos/id/1015/240/140" alt="lx文档图片" width="240">
+</div>
+
+<hr>
+<p><strong>验证要点</strong>：lx-* 类名格式能否被回环识别、各块类型是否正确映射、与普通 HTML 标签导入的差异。</p>
+<p><strong>说明</strong>：lx-* 类名为基于乐享 API 文档推断的格式，实际导出结构以 <code>GET content?content_type=html</code> 真实返回为准。建议先用该接口导出一个真实页面，替换本文件内容做精确回环测试。</p>
+</body>
+</html>

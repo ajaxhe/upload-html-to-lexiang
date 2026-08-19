@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140">
+  <rect width="240" height="140" fill="#ff9a00"/>
+  <rect x="1" y="1" width="238" height="138" fill="none" stroke="#404040" stroke-width="2"/>
+  <text x="14" y="30" fill="white" font-size="16" font-family="sans-serif">SVG 格式图片</text>
+  <text x="14" y="100" fill="#f0f0f0" font-size="11" font-family="sans-serif">for Lexiang HTML Import Test</text>
+</svg>

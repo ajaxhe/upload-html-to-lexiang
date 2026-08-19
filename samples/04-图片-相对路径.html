@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>测试04 - 图片相对路径</title>
+</head>
+<body>
+<h1>测试用例 04：图片相对路径引用</h1>
+<p>本文件所有图片通过相对路径引用本地 assets/ 目录下的图片文件，验证乐享导入时能否识别并处理本地相对路径图片。<strong>导入时需将本文件与 assets/ 目录一起提供。</strong></p>
+
+<h2>4.1 子目录相对路径（PNG）</h2>
+<img src="assets/local-image.png" alt="相对路径PNG">
+
+<h2>4.2 显式 ./ 前缀（JPG）</h2>
+<img src="./assets/local-image.jpg" alt="相对路径JPG">
+
+<h2>4.3 SVG 相对路径</h2>
+<img src="assets/local-image.svg" alt="相对路径SVG" width="240">
+
+<h2>4.4 WEBP 相对路径</h2>
+<img src="assets/local-image.webp" alt="相对路径WEBP" width="240">
+
+<h2>4.5 GIF 相对路径</h2>
+<img src="assets/local-image.gif" alt="相对路径GIF">
+
+<h2>4.6 srcset 响应式图片</h2>
+<img src="assets/local-image.png"
+     srcset="assets/local-image.png 1x, assets/local-image.jpg 2x"
+     alt="srcset响应式图片" width="240">
+
+<h2>4.7 picture 标签（多源兜底）</h2>
+<picture>
+  <source srcset="assets/local-image.webp" type="image/webp">
+  <source srcset="assets/local-image.jpg" type="image/jpeg">
+  <img src="assets/local-image.png" alt="picture标签兜底PNG">
+</picture>
+
+<h2>4.8 图片作为超链接</h2>
+<a href="assets/local-image.png"><img src="assets/local-image.png" alt="点击查看大图" width="120"></a>
+
+<h2>4.9 带宽高与样式控制的图片</h2>
+<img src="assets/local-image.jpg" style="width:60%;border-radius:8px;border:2px solid #1a79ff;" alt="带样式图片">
+
+<hr>
+<p><strong>验证要点</strong>：相对路径图片是否被识别、是否需要配套 assets 资源、srcset/picture 多源是否处理、图片链接是否正常。</p>
+<p><strong>说明</strong>：相对路径图片依赖 assets/ 目录，单独导入本 HTML 文件时图片必然缺失——这本身也是要验证的边界（乐享是否支持携带资源包导入）。</p>
+</body>
+</html>

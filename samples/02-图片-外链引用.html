@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>测试02 - 图片外链引用</title>
+</head>
+<body>
+<h1>测试用例 02：图片外链引用（http/https URL）</h1>
+<p>本文件所有图片均通过 https 外链 URL 引用，验证乐享导入 HTML 时能否抓取外链图片并转为内部存储/正确渲染。</p>
+
+<h2>2.1 JPG 外链（picsum.photos）</h2>
+<img src="https://picsum.photos/id/237/240/140" alt="外链JPG" width="240">
+
+<h2>2.2 PNG 外链（picsum.photos）</h2>
+<img src="https://picsum.photos/id/0/240/140.png" alt="外链PNG" width="240">
+
+<h2>2.3 WEBP 外链（picsum.photos）</h2>
+<img src="https://picsum.photos/id/1003/240/140.webp" alt="外链WEBP" width="240">
+
+<h2>2.4 SVG 外链（jsdelivr CDN）</h2>
+<img src="https://cdn.jsdelivr.net/npm/simple-icons@13.0.0/icons/github.svg" alt="外链SVG" width="120">
+
+<h2>2.5 GIF 外链（维基共享资源）</h2>
+<img src="https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif" alt="外链GIF" width="120">
+
+<h2>2.6 带 figure 与 figcaption 的图片</h2>
+<figure>
+  <img src="https://picsum.photos/id/1015/320/180" alt="figure图片" width="320">
+  <figcaption>图 1：带说明的外链图片（figure/figcaption）</figcaption>
+</figure>
+
+<h2>2.7 CSS 背景图（内联 style）</h2>
+<div style="width:240px;height:140px;background:url('https://picsum.photos/id/1025/240/140') no-repeat center;background-size:cover;border:1px solid #ccc;color:#fff;">CSS 背景图区域</div>
+
+<h2>2.8 多图连续排列（行内图组）</h2>
+<p>
+  <img src="https://picsum.photos/id/1062/80/80" alt="图1" width="80">
+  <img src="https://picsum.photos/id/1066/80/80" alt="图2" width="80">
+  <img src="https://picsum.photos/id/1074/80/80" alt="图3" width="80">
+</p>
+
+<h2>2.9 无 alt 属性的图片</h2>
+<img src="https://picsum.photos/id/1080/200/120" width="200">
+
+<hr>
+<p><strong>验证要点</strong>：外链图片导入后是否被抓取、是否丢失（裂图）、是否转为乐享内部图片存储、CSS 背景图是否被处理、figure 结构是否保留。</p>
+<p><strong>说明</strong>：需联网测试。若某图床不可达，对应图片会显示裂图，可替换为可达 URL 后重测。</p>
+</body>
+</html>

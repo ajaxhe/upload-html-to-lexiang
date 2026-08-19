@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>测试07 - 样式与脚本</title>
+<style>
+  .red-text { color: #e34d59; }
+  .blue-bg { background: #e8f3ff; padding: 12px; border-left: 4px solid #1a79ff; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin: 8px 0; }
+  #special { font-weight: bold; color: #00a870; }
+</style>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<h1>测试用例 07：CSS 样式与 JavaScript 脚本</h1>
+<p>验证 HTML 中的 CSS 样式（内联 style 标签 / 外部 link / style 属性 / class-id 选择器）和 JS 脚本在导入后的处理情况：保留、剥离还是转义。</p>
+
+<h2>7.1 内联 style 标签定义的类</h2>
+<p class="red-text">红色文本（.red-text 类，内联 style 标签）</p>
+<p class="blue-bg">蓝色背景块（.blue-bg 类）</p>
+<div class="box">带边框盒子（.box 类）</div>
+<p id="special">特殊样式文本（#special id 选择器）</p>
+
+<h2>7.2 外部 CSS（link 引用 assets/style.css）</h2>
+<p class="ext-green">绿色文本（外部 CSS .ext-green）</p>
+<div class="ext-card">外部 CSS 卡片样式（.ext-card）</div>
+
+<h2>7.3 内联 style 属性</h2>
+<p style="color:#7b61ff;font-size:18px;font-weight:bold;">内联 style 属性文本</p>
+<div style="background:#fff7e8;padding:10px;border-radius:8px;">内联样式容器（style 属性）</div>
+
+<h2>7.4 内联 JavaScript（script 标签）</h2>
+<p>下方文本由内联 JS 动态写入：</p>
+<div id="js-output">（JS 未执行时的占位文本）</div>
+<script>
+document.getElementById('js-output').textContent = 'JS 已执行：动态写入内容 ' + new Date().toLocaleString();
+</script>
+
+<h2>7.5 外部 JavaScript（script src 引用 assets/app.js）</h2>
+<p id="ext-js-target">外部 JS 占位文本</p>
+<script src="assets/app.js"></script>
+
+<h2>7.6 事件属性（onclick）</h2>
+<button onclick="alert('点击事件触发')">点击按钮（onclick）</button>
+
+<h2>7.7 iframe 嵌入</h2>
+<iframe src="https://www.example.com" width="100%" height="150" title="iframe嵌入测试"></iframe>
+
+<h2>7.8 video / audio 媒体标签</h2>
+<video controls width="240" poster="https://picsum.photos/id/1015/240/140">
+  <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4">
+  您的浏览器不支持 video 标签。
+</video>
+<p>音频示例：</p>
+<audio controls>
+  <source src="https://www.w3schools.com/html/horse.mp3" type="audio/mpeg">
+  您的浏览器不支持 audio 标签。
+</audio>
+
+<h2>7.9 表单元素</h2>
+<form>
+  <p><label>姓名：<input type="text" name="name" value="测试"></label></p>
+  <p><label>邮箱：<input type="email" name="email"></label></p>
+  <p><label>部门：
+    <select name="dept"><option>研发部</option><option>产品部</option></select>
+  </label></p>
+  <p><label><input type="checkbox" checked> 同意条款</label></p>
+  <p><label><input type="radio" name="r" checked> 选项A <input type="radio" name="r"> 选项B</label></p>
+  <p><textarea name="remark" rows="3">备注内容</textarea></p>
+  <p><button type="button">提交按钮</button></p>
+</form>
+
+<hr>
+<p><strong>验证要点</strong>：CSS 样式是否保留或被剥离、外部 CSS/JS 资源是否被加载、内联 JS 是否被执行或转义、iframe/video/audio/media 标签如何处理、表单元素是否保留。</p>
+</body>
+</html>

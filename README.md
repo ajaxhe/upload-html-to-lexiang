@@ -188,6 +188,33 @@ python3 scripts/html_import.py report.html --target-url "..." --profile myorg --
 }
 ```
 
+## 测试样本
+
+仓库内置 `samples/` 目录，提供 8 个覆盖不同场景的 HTML 测试文件及其 `assets/` 资源：
+
+| 文件 | 测试重点 | 依赖 assets |
+|------|---------|:-----------:|
+| `01-基础富文本结构.html` | 标题/列表/表格/代码块/引用/超链接 | 否 |
+| `02-图片-外链引用.html` | https 外链图片 | 否 |
+| `03-图片-base64内联.html` | data URI 内联图片 | 否 |
+| `04-图片-相对路径.html` | 本地相对路径图片（srcset/picture） | 是 |
+| `05-附件-超链接.html` | a 标签附件链接 | 是 |
+| `06-混合内容综合.html` | 图片+附件混合 | 是 |
+| `07-样式与脚本.html` | 外部 CSS/JS | 是 |
+| `08-乐享原生HTML格式.html` | lx-* 格式回环导入 | 否 |
+
+`assets/` 含 5 种格式图片（png/jpg/gif/webp/svg）和 4 种附件（txt/csv/pdf/zip）+ CSS/JS。
+
+```bash
+# 用样本预检（不需凭证）
+python3 scripts/html_import.py samples/ --dry-run --json
+
+# 用样本实际上传（需配置凭证）
+python3 scripts/html_import.py samples/04-图片-相对路径.html \
+  --target-url "https://lexiangla.com/pages/<目录entry_id>?company_from=abc" \
+  --profile myorg
+```
+
 ## 限制
 
 - 创建的是 file 条目（`entry_type=file`），不是可编辑的 page 条目

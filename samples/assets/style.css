@@ -1,0 +1,9 @@
+/* 测试07 外部 CSS - 验证外部样式表是否被乐享加载保留 */
+.ext-green { color: #00a870; font-weight: bold; }
+.ext-card {
+  background: #f3f3f3;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+}

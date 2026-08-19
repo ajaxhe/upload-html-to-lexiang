@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>测试05 - 附件超链接</title>
+</head>
+<body>
+<h1>测试用例 05：附件超链接（a 标签）</h1>
+<p>本文件通过 a 标签 href 引用各类附件文件，验证乐享导入 HTML 时能否识别附件并处理（转为可下载附件条目）。<strong>导入时需将本文件与 assets/ 目录一起提供。</strong></p>
+
+<h2>5.1 PDF 附件</h2>
+<p>下载 <a href="assets/sample.pdf">测试PDF文件（sample.pdf）</a>。PDF 是最常见的文档附件类型。</p>
+
+<h2>5.2 TXT 附件</h2>
+<p><a href="assets/sample.txt">查看 TXT 附件（sample.txt）</a>。纯文本附件。</p>
+
+<h2>5.3 CSV 数据表附件</h2>
+<p><a href="assets/sample.csv">下载 CSV 数据表（sample.csv）</a>。逗号分隔值表格。</p>
+
+<h2>5.4 ZIP 压缩包附件</h2>
+<p><a href="assets/sample.zip">下载 ZIP 压缩包（sample.zip）</a>。包含多个内部文件的归档。</p>
+
+<h2>5.5 图片文件作为附件链接</h2>
+<p><a href="assets/local-image.png">查看图片文件（PNG，作为附件）</a></p>
+
+<h2>5.6 带 download 属性的下载链接</h2>
+<p>
+  <a href="assets/sample.txt" download>强制下载（download 无值）</a> |
+  <a href="assets/sample.pdf" download="重命名文件.pdf">download 指定文件名</a>
+</p>
+
+<h2>5.7 外链附件</h2>
+<p><a href="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf">外链 PDF（dummy.pdf，W3C）</a>。验证外链附件是否被抓取。</p>
+
+<h2>5.8 非文件链接（mailto / tel / 锚点）</h2>
+<p>
+  <a href="mailto:test@example.com">邮件链接</a> |
+  <a href="tel:10086">电话链接</a> |
+  <a href="#top">页内锚点</a>
+</p>
+<p id="top">↑ 锚点目标。</p>
+
+<h2>5.9 混合：附件链接与正文穿插</h2>
+<p>详见 <a href="assets/sample.pdf">技术文档</a>，附 <a href="assets/sample.csv">原始数据</a>，源码见 <a href="assets/sample.zip">代码包</a>。</p>
+
+<hr>
+<p><strong>验证要点</strong>：附件链接是否被识别为乐享附件条目、是否可下载、download 属性是否生效、外链附件是否抓取、非文件链接（mailto/tel）如何处理。</p>
+<p><strong>说明</strong>：相对路径附件依赖 assets/ 目录。单独导入本文件时附件不可达——验证乐享是否支持携带资源包导入。</p>
+</body>
+</html>

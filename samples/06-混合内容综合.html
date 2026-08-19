@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>测试06 - 混合内容综合</title>
+</head>
+<body>
+<h1>API 接入指南（混合内容综合测试）</h1>
+<p>本文档模拟一篇真实的技术文档，混合了文本、外链图片、相对路径图片、表格、代码块、有序列表、附件下载链接等要素，用于综合验证 HTML 导入的整体保真度与要素间相对位置是否正确。</p>
+
+<h2>一、概述</h2>
+<p>本指南介绍如何接入乐享知识库 API。接入前请准备 <strong>API Token</strong> 和 <em>知识库 ID</em>。详见 <a href="https://lexiang.tencent.com/wiki/api/12004.html">官方文档</a>。</p>
+<blockquote>提示：所有接口均需在请求头携带 Authorization: Bearer {token}。</blockquote>
+
+<h2>二、系统架构图（外链图片）</h2>
+<img src="https://picsum.photos/id/1015/480/200" alt="系统架构图（外链）" width="480">
+<p>图 1：系统整体架构</p>
+
+<h2>三、本地示意图（相对路径图片）</h2>
+<img src="assets/local-image.png" alt="本地示意图（相对路径）">
+
+<h2>四、接口列表</h2>
+<table border="1">
+  <thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>GET</td><td>/kb/entries</td><td>获取条目列表</td></tr>
+    <tr><td>POST</td><td>/kb/entries</td><td>创建条目</td></tr>
+    <tr><td>POST</td><td>/kb/entries/{id}/content</td><td>导入内容（支持 html）</td></tr>
+  </tbody>
+</table>
+
+<h2>五、调用步骤</h2>
+<ol>
+  <li>获取 API Token</li>
+  <li>调用鉴权接口验证
+    <ol>
+      <li>请求头携带 Bearer Token</li>
+      <li>检查返回状态码是否为 200</li>
+    </ol>
+  </li>
+  <li>调用业务接口获取/写入数据</li>
+  <li>处理响应并落库</li>
+</ol>
+
+<h2>六、代码示例（Python）</h2>
+<pre><code>import requests
+
+headers = {"Authorization": "Bearer YOUR_TOKEN"}
+r = requests.get(
+    "https://lxapi.lexiangla.com/cgi-bin/v1/kb/entries",
+    headers=headers
+)
+print(r.json())</code></pre>
+
+<h2>七、附件下载</h2>
+<p>完整示例代码包：<a href="assets/sample.zip">下载 ZIP 代码包（sample.zip）</a></p>
+<p>测试数据表：<a href="assets/sample.csv">下载 CSV 数据（sample.csv）</a></p>
+<p>接口说明文档：<a href="assets/sample.pdf">下载 PDF 说明（sample.pdf）</a></p>
+
+<h2>八、参数说明</h2>
+<ul>
+  <li><code>space_id</code>：知识库 ID，必填</li>
+  <li><code>parent_id</code>：父节点 ID，为空则插入根节点</li>
+  <li><code>content_type</code>：内容类型，支持 <code>markdown</code> / <code>html</code></li>
+</ul>
+
+<hr>
+<h2>九、总结</h2>
+<p>本指南覆盖了 API 接入的主要环节。如需帮助，请联系 <a href="mailto:support@example.com">技术支持</a>。</p>
+
+<hr>
+<p><strong>验证要点</strong>：综合文档中各类要素混合后的整体导入保真度，重点看要素间相对顺序、图片位置、附件链接是否错位，以及表格/代码块/列表嵌套是否正确。</p>
+</body>
+</html>
