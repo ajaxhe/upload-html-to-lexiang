@@ -11,8 +11,8 @@ description: >-
   Idempotent re-runs via content-hash manifest: unchanged files are skipped,
   changed files are re-uploaded. Use when uploading/importing HTML to Lexiang,
   especially when the HTML references local images via relative paths. Also
-  handles batch import of a directory of .html files. Credentials shared with
-  upload-markdown-to-lexiang. 将含本地相对路径资源的 HTML 打包为 ZIP bundle 上传到乐享。
+  handles batch import of a directory of .html files. Credentials are a simple
+  JSON file obtained from https://lexiangla.com/ai/claw. 将含本地相对路径资源的 HTML 打包为 ZIP bundle 上传到乐享。
 ---
 
 # Upload HTML to Lexiang
@@ -24,7 +24,7 @@ description: >-
 ## 硬性规则
 
 1. 只使用从 <https://lexiangla.com/ai/claw> 获取的个人凭证（`lxmcp_` 前缀 MCP API Token）。
-2. 凭证与 upload-markdown-to-lexiang 共享（`~/.config/lexiang-upload/`），不重复配置。
+2. 凭证文件格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}`，保存到 `~/.config/lexiang-upload/`，权限 0600。
 3. ZIP bundle 内的主 HTML 文件必须命名为 `index.html`（否则乐享无法识别 bundle 入口）。
 4. 必须传 `extension=html`（区分普通 zip 和 HTML bundle）。
 5. `file_apply_upload` 的 `name` 参数用原文档标题（取自 HTML `<title>` 或 `--name`），作为 zip 文件名和乐享条目名。不要用 "index" 或固定名。
@@ -88,16 +88,26 @@ file_apply_upload(extension=html, upload_type=PRE_SIGNED_URL)
 
 ## 凭证配置
 
-凭证与 upload-markdown-to-lexiang 完全共享。首次使用先配置：
+1. 访问 <https://lexiangla.com/ai/claw> 获取个人凭证（`lxmcp_` 前缀 token + `company_from`）
+2. 写入凭证文件：
 
 ```bash
-python3 ~/.workbuddy/skills/upload-markdown-to-lexiang/scripts/lexiang_upload.py auth login
-# 多账号：
-python3 ~/.workbuddy/skills/upload-markdown-to-lexiang/scripts/lexiang_upload.py auth login --profile csig
+mkdir -p ~/.config/lexiang-upload && cat > ~/.config/lexiang-upload/credentials.json << 'EOF'
+{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
+EOF
+chmod 600 ~/.config/lexiang-upload/credentials.json
 ```
 
-凭证保存在 `~/.config/lexiang-upload/credentials.json`（default）或
-`~/.config/lexiang-upload/profiles/<profile>.json`，权限 0600。
+多账号用命名 profile：
+
+```bash
+mkdir -p ~/.config/lexiang-upload/profiles && cat > ~/.config/lexiang-upload/profiles/myorg.json << 'EOF'
+{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
+EOF
+chmod 600 ~/.config/lexiang-upload/profiles/myorg.json
+```
+
+> AI agent 可在用户提供凭证后自动执行上述命令完成配置，无需用户手动操作。
 
 ## 上传
 
@@ -105,24 +115,24 @@ python3 ~/.workbuddy/skills/upload-markdown-to-lexiang/scripts/lexiang_upload.py
 
 ```bash
 python3 scripts/html_import.py report.html \
-  --target-url "https://csig.lexiangla.com/pages/<entry_id>?company_from=csig" \
-  --profile csig
+  --target-url "https://lexiangla.com/pages/<entry_id>?company_from=abc" \
+  --profile myorg
 ```
 
 目录下所有 HTML（每个成为独立条目，未变更的自动跳过）：
 
 ```bash
 python3 scripts/html_import.py ./html-dir \
-  --target-url "https://csig.lexiangla.com/pages/<entry_id>?company_from=csig" \
-  --profile csig --json
+  --target-url "https://lexiangla.com/pages/<entry_id>?company_from=abc" \
+  --profile myorg --json
 ```
 
 强制重新上传（忽略 manifest 幂等检查）：
 
 ```bash
 python3 scripts/html_import.py report.html \
-  --target-url "https://csig.lexiangla.com/pages/<entry_id>?company_from=csig" \
-  --profile csig --force
+  --target-url "https://lexiangla.com/pages/<entry_id>?company_from=abc" \
+  --profile myorg --force
 ```
 
 只做预检（检测资源、打包、不上传）：
@@ -139,7 +149,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） |
 | `--parent-entry-id` | 目标父节点 entry_id（与 --target-url 二选一） |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） |
-| `--profile` | 凭证 profile（如 csig） |
+| `--profile` | 凭证 profile（多账号时指定，如 myorg） |
 | `--credential-file` | 凭证文件路径 |
 | `--dry-run` | 只检测打包不上传 |
 | `--force` | 强制重新上传，忽略 manifest 幂等检查 |

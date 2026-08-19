@@ -38,19 +38,23 @@ cd upload-html-to-lexiang
 
 ### 2. 配置乐享凭证
 
-凭证与 [upload-markdown-to-lexiang](https://github.com/ajaxhe/lexiang-openapi-skill) 共享，首次使用先配置：
+访问 https://lexiangla.com/ai/claw 获取个人凭证（`lxmcp_` 前缀 token + `company_from`），然后写入凭证文件：
 
 ```bash
-# 需先安装 upload-markdown-to-lexiang skill
-python3 ~/.workbuddy/skills/upload-markdown-to-lexiang/scripts/lexiang_upload.py auth login
-
-# 多账号：
-python3 ~/.workbuddy/skills/upload-markdown-to-lexiang/scripts/lexiang_upload.py auth login --profile csig
+mkdir -p ~/.config/lexiang-upload && cat > ~/.config/lexiang-upload/credentials.json << 'EOF'
+{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
+EOF
+chmod 600 ~/.config/lexiang-upload/credentials.json
 ```
 
-凭证保存在 `~/.config/lexiang-upload/credentials.json`（default）或 `~/.config/lexiang-upload/profiles/<profile>.json`，权限 0600。
+多账号用命名 profile：
 
-访问 https://lexiangla.com/ai/claw 获取个人凭证（`lxmcp_` 前缀 MCP API Token）。
+```bash
+mkdir -p ~/.config/lexiang-upload/profiles && cat > ~/.config/lexiang-upload/profiles/myorg.json << 'EOF'
+{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
+EOF
+chmod 600 ~/.config/lexiang-upload/profiles/myorg.json
+```
 
 ## 使用
 
@@ -58,16 +62,16 @@ python3 ~/.workbuddy/skills/upload-markdown-to-lexiang/scripts/lexiang_upload.py
 
 ```bash
 python3 scripts/html_import.py report.html \
-  --target-url "https://csig.lexiangla.com/pages/<目录entry_id>?company_from=csig" \
-  --profile csig
+  --target-url "https://lexiangla.com/pages/<目录entry_id>?company_from=abc" \
+  --profile myorg
 ```
 
 ### 目录下所有 HTML（每个成为独立条目）
 
 ```bash
 python3 scripts/html_import.py ./html-dir \
-  --target-url "https://csig.lexiangla.com/pages/<目录entry_id>?company_from=csig" \
-  --profile csig --json
+  --target-url "https://lexiangla.com/pages/<目录entry_id>?company_from=abc" \
+  --profile myorg --json
 ```
 
 ### 预检模式（只检测打包不上传）
@@ -103,7 +107,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 二选一 |
 | `--parent-entry-id` | 目标父节点 entry_id | 二选一 |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） | 否 |
-| `--profile` | 凭证 profile（如 csig） | 否 |
+| `--profile` | 凭证 profile（多账号时指定，如 myorg） | 否 |
 | `--credential-file` | 凭证文件路径 | 否 |
 | `--dry-run` | 只检测打包不上传 | 否 |
 | `--json` | stdout 只输出 JSON | 否 |
@@ -142,7 +146,7 @@ report.zip
 - **兼容性如实记录**：缺失资源降级为占位提示文本，不静默丢弃；每次输出成功/降级/失败三态清单。
 - **幂等 + 增量 + 断点续传**：以源文件路径为 key、content_hash 判断变更，manifest 立即落盘，重跑不重不漏。
 - **纯标准库实现**：仅依赖 Python 3 标准库（urllib/zipfile/html.parser/hashlib），无需安装第三方包。
-- **凭证复用**：与 upload-markdown-to-lexiang 共享凭证体系，不重复配置。
+- **凭证独立**：只需一个 `lxmcp_` token + `company_from`，一行命令写入 JSON 文件即可。
 
 ## 与其他上传方式的区别
 
@@ -161,10 +165,10 @@ report.zip
 
 ```bash
 # 强制重新上传（忽略幂等）
-python3 scripts/html_import.py report.html --target-url "..." --profile csig --force
+python3 scripts/html_import.py report.html --target-url "..." --profile myorg --force
 
 # 禁用 manifest（每次全量上传）
-python3 scripts/html_import.py report.html --target-url "..." --profile csig --no-incremental
+python3 scripts/html_import.py report.html --target-url "..." --profile myorg --no-incremental
 ```
 
 ## 兼容性降级

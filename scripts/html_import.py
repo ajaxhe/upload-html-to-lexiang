@@ -15,8 +15,9 @@ The extension=html parameter tells Lexiang that this zip is an HTML bundle
 (not a regular zip file), so relative-path resources inside are resolved
 against index.html at the archive root.
 
-Credentials are shared with upload-markdown-to-lexiang (same ~/.config/lexiang-upload/
-profiles), so no extra configuration is needed.
+Credentials are stored in ~/.config/lexiang-upload/ (JSON format:
+{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}), obtained from
+https://lexiangla.com/ai/claw.
 """
 from __future__ import annotations
 
@@ -135,8 +136,13 @@ def load_credential(profile: str | None, credential_file: str | None) -> Persona
     if not path.exists():
         raise AuthError(
             f"凭证文件不存在：{path}\n"
-            f"请先运行 upload-markdown-to-lexiang 的 `auth login` 配置凭证，"
-            f"或访问 {CREDENTIAL_HELP_URL} 获取个人凭证。"
+            f"请访问 {CREDENTIAL_HELP_URL} 获取凭证，"
+            f"然后执行：\n"
+            f"  mkdir -p ~/.config/lexiang-upload && "
+            f"cat > ~/.config/lexiang-upload/credentials.json << 'EOF'\n"
+            f'  {{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}}\n'
+            f"  EOF\n"
+            f"  chmod 600 ~/.config/lexiang-upload/credentials.json"
         )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -726,7 +732,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="乐享目标目录 URL（自动解析 parent_entry_id，覆盖上面参数）",
     )
     parser.add_argument("--name", help="导入后的文件标题（默认取 HTML <title>）")
-    parser.add_argument("--profile", help="凭证 profile（与 upload-markdown-to-lexiang 共享）")
+    parser.add_argument("--profile", help="凭证 profile（多账号时指定，如 myorg）")
     parser.add_argument("--credential-file", help="凭证文件路径")
     parser.add_argument(
         "--dry-run",
