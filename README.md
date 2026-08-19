@@ -139,6 +139,8 @@ report.zip
 ## 设计原则
 
 - **零 token 执行**：扫描、打包、上传全程由脚本完成，HTML 正文和资源二进制从不进入 LLM 上下文。脚本只输出 JSON 摘要。
+- **兼容性如实记录**：缺失资源降级为占位提示文本，不静默丢弃；每次输出成功/降级/失败三态清单。
+- **幂等 + 增量 + 断点续传**：以源文件路径为 key、content_hash 判断变更，manifest 立即落盘，重跑不重不漏。
 - **纯标准库实现**：仅依赖 Python 3 标准库（urllib/zipfile/html.parser/hashlib），无需安装第三方包。
 - **凭证复用**：与 upload-markdown-to-lexiang 共享凭证体系，不重复配置。
 
@@ -150,10 +152,41 @@ report.zip
 | Markdown 图文 | upload-markdown-to-lexiang | page | Markdown 转乐享在线页面 |
 | 纯 HTML 文本 | `entry_import_content`(content_type=html) | page | 无本地资源的 HTML 转页面 |
 
+## 幂等与增量
+
+- **幂等**：同一文件重复上传不会创建重复条目。脚本用 content_hash（基于源 HTML + 资源文件内容）判断是否变更，未变更则跳过。
+- **增量**：源文件修改后重跑，content_hash 不同会触发重新上传并更新 manifest。
+- **断点续传**：manifest 每次成功后立即原子写入，中断后重跑只处理未完成的。
+- **manifest 位置**：`~/.config/lexiang-upload/manifests/html-import.json`
+
+```bash
+# 强制重新上传（忽略幂等）
+python3 scripts/html_import.py report.html --target-url "..." --profile csig --force
+
+# 禁用 manifest（每次全量上传）
+python3 scripts/html_import.py report.html --target-url "..." --profile csig --no-incremental
+```
+
+## 兼容性降级
+
+缺失的相对路径资源（文件不存在）不会导致上传失败，而是降级为占位提示文本 `[资源缺失：xxx]` 写入 index.html，并在报告中标记为 `degraded` 状态。每次运行输出三态统计：
+
+```json
+{
+  "summary": {
+    "total": 3,
+    "succeed": 2,
+    "skipped": 1,
+    "degraded": 0,
+    "failed": 0,
+    "degraded_resources": []
+  }
+}
+```
+
 ## 限制
 
 - 创建的是 file 条目（`entry_type=file`），不是可编辑的 page 条目
-- 无幂等/增量同步：重复上传同一文件会创建多个同名条目
 - 不处理 CSS `url()` 中的相对路径（仅处理 HTML 标签属性）
 
 ## 开发

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -34,15 +35,16 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 CLI_API = "1"
 CREDENTIAL_HELP_URL = "https://lexiangla.com/ai/claw"
 MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
 DEFAULT_CREDENTIALS = Path("~/.config/lexiang-upload/credentials.json").expanduser()
+MANIFEST_PATH = Path("~/.config/lexiang-upload/manifests/html-import.json").expanduser()
 PROFILE_CREDENTIALS_DIR = Path("~/.config/lexiang-upload/profiles").expanduser()
 PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -389,7 +391,9 @@ class BundleResult:
     zip_path: Path
     size: int
     index_name: str
+    content_hash: str
     included_resources: list[str]
+    degraded_resources: list[str]
     missing_resources: list[str]
     file_count: int
 
@@ -399,8 +403,10 @@ def package_html_bundle(html_path: Path, dest_dir: Path, zip_name: str | None = 
 
     The original html is copied as index.html at the zip root; every detected
     relative resource is placed at its original relative path so that links
-    remain valid inside the archive. The extension=html flag tells Lexiang
-    to treat this as an HTML bundle (not a regular zip).
+    remain valid inside the archive. Missing resources (file not found) are
+    degraded to a placeholder notice inside index.html so the document is still
+    usable. The extension=html flag tells Lexiang to treat this as an HTML
+    bundle (not a regular zip).
 
     zip_name controls the zip file name (without .zip extension). It defaults
     to the html file stem. This name is also passed to file_apply_upload as
@@ -409,23 +415,41 @@ def package_html_bundle(html_path: Path, dest_dir: Path, zip_name: str | None = 
     base_name = zip_name or html_path.stem
     resources_refs = detect_resources(html_path)
     included: list[str] = []
+    degraded: list[str] = []
     missing: list[str] = []
+
+    # content_hash over source files (deterministic across re-runs, unlike zip bytes)
+    # hash = sha256(html_content + each resource file bytes)
+    hasher = hashlib.sha256()
 
     staging = Path(tempfile.mkdtemp(prefix="lxhtml_"))
     try:
+        # read original html; we may rewrite resource refs for missing ones
+        html_content = html_path.read_text(encoding="utf-8", errors="replace")
+        hasher.update(html_content.encode("utf-8"))
+
         # main html renamed to index.html (Lexiang requires this for bundles)
-        shutil.copy2(html_path, staging / "index.html")
+        index_path = staging / "index.html"
 
         for ref in resources_refs:
             src = resolve_resource(html_path, ref)
             if src is None:
-                missing.append(ref)
+                # degrade missing resource to a visible placeholder notice
+                placeholder = (
+                    f'[资源缺失：{ref} — 源文件不存在，已跳过。请补充后重新上传。]'
+                )
+                html_content = html_content.replace(ref, placeholder)
+                degraded.append(ref)
                 continue
             rel = ref.lstrip("./").lstrip(".\\").replace("\\", "/")
             dst = staging / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
             included.append(ref)
+            # include resource file bytes in content_hash
+            hasher.update(src.read_bytes())
+
+        index_path.write_text(html_content, encoding="utf-8")
 
         zip_path = dest_dir / f"{base_name}.zip"
         file_count = 0
@@ -437,16 +461,80 @@ def package_html_bundle(html_path: Path, dest_dir: Path, zip_name: str | None = 
                     zf.write(fp, arcname)
                     file_count += 1
 
+        content_hash = hasher.hexdigest()
+
         return BundleResult(
             zip_path=zip_path,
             size=zip_path.stat().st_size,
             index_name="index.html",
+            content_hash=content_hash,
             included_resources=included,
+            degraded_resources=degraded,
             missing_resources=missing,
             file_count=file_count,
         )
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------- #
+# Manifest: idempotency + incremental + resume (principle 3)
+# --------------------------------------------------------------------------- #
+class Manifest:
+    """Persisted state mapping source path -> upload record.
+
+    Enables idempotent re-runs (skip unchanged), incremental updates
+    (re-upload changed), and resume after interruption (state survives
+    across sessions). State follows the source file, not the session.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._data: dict[str, dict] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if self.path.exists():
+            try:
+                self._data = json.loads(self.path.read_text(encoding="utf-8"))
+                if not isinstance(self._data, dict):
+                    self._data = {}
+            except (json.JSONDecodeError, OSError):
+                self._data = {}
+
+    def _save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps(self._data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp.replace(self.path)
+        try:
+            self.path.chmod(0o600)
+        except OSError:
+            pass
+
+    def get(self, source: str) -> dict | None:
+        return self._data.get(source)
+
+    def is_unchanged(self, source: str, content_hash: str) -> bool:
+        record = self.get(source)
+        return bool(record and record.get("content_hash") == content_hash)
+
+    def upsert(self, source: str, content_hash: str, entry_id: str, entry_name: str) -> None:
+        self._data[source] = {
+            "content_hash": content_hash,
+            "entry_id": entry_id,
+            "entry_name": entry_name,
+            "uploaded_at": int(time.time()),
+        }
+        self._save()
+
+    def remove(self, source: str) -> None:
+        if source in self._data:
+            del self._data[source]
+            self._save()
 
 
 # --------------------------------------------------------------------------- #
@@ -499,27 +587,48 @@ def import_one_html(
     parent_entry_id: str,
     name: str | None,
     dry_run: bool,
+    manifest: Manifest | None = None,
+    force: bool = False,
 ) -> dict:
-    """Package one html (+resources) into a zip bundle and upload to Lexiang."""
+    """Package one html (+resources) into a zip bundle and upload to Lexiang.
+
+    Idempotency (principle 3): if manifest is provided and the source file's
+    content_hash matches a previous upload, skip unless force=True.
+    """
+    source_key = str(html_path.resolve())
     title = name or extract_title(html_path)
 
     with tempfile.TemporaryDirectory(prefix="lxhtml_zip_") as tmp:
         bundle = package_html_bundle(html_path, Path(tmp), zip_name=title)
 
+        # three-state classification: succeed / degraded / error
+        has_degraded = bool(bundle.degraded_resources)
+        status = "degraded" if has_degraded else "ok"
+
         record: dict = {
             "source": str(html_path),
             "title": title,
             "index_name": bundle.index_name,
+            "content_hash": bundle.content_hash[:12],
             "zip_size": bundle.size,
             "file_count": bundle.file_count,
             "included_resources": bundle.included_resources,
+            "degraded_resources": bundle.degraded_resources,
             "missing_resources": bundle.missing_resources,
-            "status": "dry_run" if dry_run else "pending",
+            "status": "dry_run" if dry_run else status,
         }
 
         if dry_run:
-            record["status"] = "dry_run"
             record["message"] = "dry-run 完成，未实际上传"
+            return record
+
+        # idempotency check: skip if unchanged and manifest has record
+        if manifest and not force and manifest.is_unchanged(source_key, bundle.content_hash):
+            prev = manifest.get(source_key)
+            record["status"] = "skipped"
+            record["entry_id"] = prev.get("entry_id", "")
+            record["entry_name"] = prev.get("entry_name", "")
+            record["message"] = "内容未变更，跳过上传（幂等）"
             return record
 
         # step 1: apply for upload (extension=html tells Lexiang this is an HTML bundle)
@@ -550,8 +659,17 @@ def import_one_html(
         record["entry_id"] = entry.get("id", "")
         record["entry_name"] = entry.get("name", "")
         record["entry_type"] = entry.get("entry_type", "")
-        record["status"] = "succeed"
-        record["message"] = "上传成功"
+        record["status"] = "degraded" if has_degraded else "succeed"
+        record["message"] = "上传成功" + ("（含降级资源）" if has_degraded else "")
+
+        # persist to manifest for future idempotency
+        if manifest and record.get("entry_id"):
+            manifest.upsert(
+                source_key,
+                bundle.content_hash,
+                record["entry_id"],
+                record["entry_name"],
+            )
         return record
 
 
@@ -566,6 +684,25 @@ def parse_lexiang_url(url: str) -> str:
         if part == "pages" and i + 1 < len(path_parts):
             return path_parts[i + 1]
     return ""
+
+
+def _summarize(results: list[dict]) -> dict:
+    """Build a three-state summary: succeed / degraded / failed (principle 2)."""
+    succeed = [r for r in results if r.get("status") in ("succeed", "ok")]
+    skipped = [r for r in results if r.get("status") == "skipped"]
+    degraded = [r for r in results if r.get("status") == "degraded"]
+    failed = [r for r in results if r.get("status") == "error"]
+    all_degraded_resources: list[str] = []
+    for r in degraded:
+        all_degraded_resources.extend(r.get("degraded_resources", []))
+    return {
+        "total": len(results),
+        "succeed": len(succeed),
+        "skipped": len(skipped),
+        "degraded": len(degraded),
+        "failed": len(failed),
+        "degraded_resources": all_degraded_resources,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -595,6 +732,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="只打包检测不上传，输出将包含的资源清单",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="强制重新上传，忽略 manifest 幂等检查（默认未变更的会跳过）",
+    )
+    parser.add_argument(
+        "--no-incremental",
+        action="store_true",
+        help="禁用 manifest 记录（不读写状态文件，每次都全量上传）",
+    )
+    parser.add_argument(
+        "--manifest-path",
+        help=f"manifest 文件路径（默认 {MANIFEST_PATH}）",
     )
     parser.add_argument("--json", action="store_true", help="stdout 只输出 JSON")
     parser.add_argument("--version", action="version", version=f"html_import {VERSION}")
@@ -640,19 +791,23 @@ def main(argv: list[str] | None = None) -> int:
         for hf in html_files:
             with tempfile.TemporaryDirectory(prefix="lxhtml_zip_") as tmp:
                 bundle = package_html_bundle(hf, Path(tmp))
+            status = "degraded" if bundle.degraded_resources else "ok"
             results.append(
                 {
                     "source": str(hf),
                     "title": extract_title(hf),
                     "index_name": bundle.index_name,
+                    "content_hash": bundle.content_hash[:12],
                     "zip_size": bundle.size,
                     "file_count": bundle.file_count,
                     "included_resources": bundle.included_resources,
+                    "degraded_resources": bundle.degraded_resources,
                     "missing_resources": bundle.missing_resources,
-                    "status": "dry_run",
+                    "status": status,
                 }
             )
-        print(json.dumps({"results": results}, ensure_ascii=False, indent=2))
+        summary = _summarize(results)
+        print(json.dumps({"results": results, "summary": summary}, ensure_ascii=False, indent=2))
         return 0
 
     # load credential + init MCP
@@ -669,21 +824,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"MCP 初始化失败：{error}", file=sys.stderr)
         return 3
 
+    # init manifest for idempotency (principle 3)
+    manifest = None
+    if not args.no_incremental:
+        mpath = Path(args.manifest_path).expanduser() if args.manifest_path else MANIFEST_PATH
+        manifest = Manifest(mpath)
+        log(f"manifest: {mpath}")
+
     results = []
     exit_code = 0
     for hf in html_files:
         log(f"处理：{hf.name}")
         try:
             record = import_one_html(
-                client, hf, parent_entry_id, args.name, args.dry_run
+                client, hf, parent_entry_id, args.name, args.dry_run,
+                manifest=manifest, force=args.force,
             )
             results.append(record)
-            if record.get("entry_id"):
+            eid = record.get("entry_id", "")
+            if eid:
                 log(
                     f"  -> {record['status']}: "
-                    f"entry_id={record['entry_id'][:16]}, "
+                    f"entry_id={eid[:16]}, "
                     f"resources={len(record.get('included_resources', []))}/"
-                    f"{len(record.get('included_resources', [])) + len(record.get('missing_resources', []))}"
+                    f"{len(record.get('included_resources', [])) + len(record.get('degraded_resources', []))}"
                 )
             else:
                 log(f"  -> {record.get('status')}: {record.get('message', '')}")
@@ -692,7 +856,8 @@ def main(argv: list[str] | None = None) -> int:
             log(f"  -> 失败：{error}")
             exit_code = 1
 
-    print(json.dumps({"results": results}, ensure_ascii=False, indent=2))
+    summary = _summarize(results)
+    print(json.dumps({"results": results, "summary": summary}, ensure_ascii=False, indent=2))
     return exit_code
 
 
