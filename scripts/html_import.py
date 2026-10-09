@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 CLI_API = "1"
 CREDENTIAL_HELP_URL = "https://lexiangla.com/ai/claw"
 MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
@@ -260,14 +260,37 @@ class MCPClient:
         )
 
     def _request(self, tool: str, arguments: dict) -> dict:
-        return self._post(
-            {
-                "jsonrpc": "2.0",
-                "id": uuid.uuid4().hex,
-                "method": "tools/call",
-                "params": {"name": tool, "arguments": arguments},
-            }
-        )
+        try:
+            return self._post(
+                {
+                    "jsonrpc": "2.0",
+                    "id": uuid.uuid4().hex,
+                    "method": "tools/call",
+                    "params": {"name": tool, "arguments": arguments},
+                }
+            )
+        except MCPError as error:
+            # 2026-09-22 起乐享 MCP 服务端切换为网关（元工具）模式：tools/list 只
+            # 暴露 call_tool / get_tool_schema 等 7 个元工具，业务工具（file_* /
+            # entry_*）直呼会返回 HTTP 200 + isError，
+            # 文本为 "tool is not allowed: <tool>"。
+            # 此时改走 call_tool 元工具转发，业务工具的返回结构不变；
+            # 服务端直呼可用（旧版）时行为完全不变。
+            # 注意：call_tool 不能转发元工具本身（会报 cannot call meta tool），
+            # 故仅在业务工具被拒时转发。
+            if "tool is not allowed" not in str(error):
+                raise
+            return self._post(
+                {
+                    "jsonrpc": "2.0",
+                    "id": uuid.uuid4().hex,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "call_tool",
+                        "arguments": {"tool_name": tool, "arguments": arguments},
+                    },
+                }
+            )
 
     def json(self, tool: str, arguments: dict) -> dict:
         result = self._request(tool, arguments)
@@ -588,91 +611,156 @@ def _extract_session(result: dict) -> tuple[str, str]:
 
 
 def import_one_html(
-    client: MCPClient,
+    client: MCPClient | None,
     html_path: Path,
     parent_entry_id: str,
     name: str | None,
     dry_run: bool,
     manifest: Manifest | None = None,
     force: bool = False,
+    entry_id: str | None = None,
+    raw: bool = False,
 ) -> dict:
     """Package one html (+resources) into a zip bundle and upload to Lexiang.
 
     Idempotency (principle 3): if manifest is provided and the source file's
     content_hash matches a previous upload, skip unless force=True.
+
+    entry_id: when set, UPDATE that existing file entry in place instead of
+    creating a new one (file_apply_upload scenario 2). Without it a re-upload
+    always creates a duplicate entry with the same name.
+
+    raw: skip the ZIP bundle and upload the .html file verbatim. Only valid
+    when the HTML has no relative-path resources; keeps the server-side file
+    shape identical to a plain .html upload (name stays ``<title>.html``).
     """
     source_key = str(html_path.resolve())
     title = name or extract_title(html_path)
 
     with tempfile.TemporaryDirectory(prefix="lxhtml_zip_") as tmp:
-        bundle = package_html_bundle(html_path, Path(tmp), zip_name=title)
+        if raw:
+            refs = detect_resources(html_path)
+            if refs:
+                raise MCPError(
+                    "--raw 不支持含相对路径资源的 HTML（检测到 "
+                    f"{len(refs)} 个：{', '.join(refs[:3])}）；"
+                    "请去掉 --raw 改用 zip bundle 方式"
+                )
+            payload_path = html_path
+            content_hash = hashlib.sha256(html_path.read_bytes()).hexdigest()
+            upload_name = f"{title}.html"
+            mime_type = "text/html"
+            file_count = 1
+            index_name = html_path.name
+            included: list[str] = []
+            degraded: list[str] = []
+            missing: list[str] = []
+        else:
+            bundle = package_html_bundle(html_path, Path(tmp), zip_name=title)
+            payload_path = bundle.zip_path
+            content_hash = bundle.content_hash
+            upload_name = f"{title}.zip"
+            mime_type = "application/zip"
+            file_count = bundle.file_count
+            index_name = bundle.index_name
+            included = bundle.included_resources
+            degraded = bundle.degraded_resources
+            missing = bundle.missing_resources
+
+        payload_size = payload_path.stat().st_size
 
         # three-state classification: succeed / degraded / error
-        has_degraded = bool(bundle.degraded_resources)
+        has_degraded = bool(degraded)
         status = "degraded" if has_degraded else "ok"
 
         record: dict = {
             "source": str(html_path),
             "title": title,
-            "index_name": bundle.index_name,
-            "content_hash": bundle.content_hash[:12],
-            "zip_size": bundle.size,
-            "file_count": bundle.file_count,
-            "included_resources": bundle.included_resources,
-            "degraded_resources": bundle.degraded_resources,
-            "missing_resources": bundle.missing_resources,
+            "mode": "raw" if raw else "bundle",
+            "index_name": index_name,
+            "content_hash": content_hash[:12],
+            "zip_size": payload_size,
+            "file_count": file_count,
+            "included_resources": included,
+            "degraded_resources": degraded,
+            "missing_resources": missing,
             "status": "dry_run" if dry_run else status,
         }
+        if entry_id:
+            record["target_entry_id"] = entry_id
 
         if dry_run:
             record["message"] = "dry-run 完成，未实际上传"
             return record
 
+        if client is None:
+            raise MCPError("内部错误：非 dry-run 模式必须提供 MCPClient")
+
         # idempotency check: skip if unchanged and manifest has record
-        if manifest and not force and manifest.is_unchanged(source_key, bundle.content_hash):
-            prev = manifest.get(source_key)
+        if manifest and not force and manifest.is_unchanged(source_key, content_hash):
+            prev = manifest.get(source_key) or {}
             record["status"] = "skipped"
             record["entry_id"] = prev.get("entry_id", "")
             record["entry_name"] = prev.get("entry_name", "")
             record["message"] = "内容未变更，跳过上传（幂等）"
             return record
 
-        # step 1: apply for upload (extension=html tells Lexiang this is an HTML bundle)
-        apply_result = client.json(
-            "file_apply_upload",
-            {
-                "parent_entry_id": parent_entry_id,
-                "name": f"{title}.zip",
-                "size": str(bundle.size),
-                "mime_type": "application/zip",
-                "extension": "html",
-                "upload_type": "PRE_SIGNED_URL",
-            },
-        )
+        # resolve in-place update target when --entry-id was given
+        file_id = ""
+        if entry_id:
+            detail = client.json("entry_describe_entry", {"entry_id": entry_id})
+            entry_meta = detail.get("data", {}).get("entry", {})
+            if entry_meta.get("entry_type") != "file":
+                raise MCPError(
+                    f"entry {entry_id} 的 entry_type="
+                    f"{entry_meta.get('entry_type')!r}；只有 file 类型条目支持原地更新"
+                )
+            file_id = entry_meta.get("target_id", "")
+            if not file_id:
+                raise MCPError(f"entry {entry_id} 未返回 target_id，无法定位待更新的文件")
+            record["file_id"] = file_id
+            # 场景2：parent_entry_id 必须填「该文件条目自己的 entry_id」，不是父目录
+            parent_entry_id = entry_id
+
+        # step 1: apply for upload
+        #   extension=html 告诉乐享这是 HTML（bundle）而非普通压缩包
+        apply_args = {
+            "parent_entry_id": parent_entry_id,
+            "name": upload_name,
+            "size": str(payload_size),
+            "mime_type": mime_type,
+            "extension": "html",
+            "upload_type": "PRE_SIGNED_URL",
+        }
+        if file_id:
+            apply_args["file_id"] = file_id
+        apply_result = client.json("file_apply_upload", apply_args)
         upload_url, session_id = _extract_session(apply_result)
         record["session_id"] = session_id
 
-        # step 2: PUT zip to presigned URL
-        put_to_presigned_url(upload_url, bundle.zip_path, "application/zip")
+        # step 2: PUT payload to presigned URL
+        put_to_presigned_url(upload_url, payload_path, mime_type)
         record["cos_uploaded"] = True
 
-        # step 3: commit upload (creates the entry)
+        # step 3: commit upload (creates the entry, or a new version for an update)
         commit_result = client.json(
             "file_commit_upload",
             {"session_id": session_id},
         )
-        entry = commit_result.get("data", {}).get("entry", {})
-        record["entry_id"] = entry.get("id", "")
-        record["entry_name"] = entry.get("name", "")
-        record["entry_type"] = entry.get("entry_type", "")
+        committed = commit_result.get("data", {}).get("entry", {})
+        record["entry_id"] = committed.get("id", "") or entry_id or ""
+        record["entry_name"] = committed.get("name", "")
+        record["entry_type"] = committed.get("entry_type", "")
         record["status"] = "degraded" if has_degraded else "succeed"
-        record["message"] = "上传成功" + ("（含降级资源）" if has_degraded else "")
+        record["message"] = ("更新成功" if entry_id else "上传成功") + (
+            "（含降级资源）" if has_degraded else ""
+        )
 
         # persist to manifest for future idempotency
         if manifest and record.get("entry_id"):
             manifest.upsert(
                 source_key,
-                bundle.content_hash,
+                content_hash,
                 record["entry_id"],
                 record["entry_name"],
             )
@@ -731,6 +819,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--target-url",
         help="乐享目标目录 URL（自动解析 parent_entry_id，覆盖上面参数）",
     )
+    parser.add_argument(
+        "--entry-id",
+        help=(
+            "原地更新已有的 file 类型条目（entry_id 取自 /pages/<id>）。"
+            "指定后无需再给 --parent-entry-id；"
+            "不加此项则每次都新建条目，重传会产生同名重复条目"
+        ),
+    )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help=(
+            "不打包 ZIP bundle，直接上传 .html 原文"
+            "（仅适用于无相对路径资源的自包含 HTML）"
+        ),
+    )
     parser.add_argument("--name", help="导入后的文件标题（默认取 HTML <title>）")
     parser.add_argument("--profile", help="凭证 profile（多账号时指定，如 myorg）")
     parser.add_argument("--credential-file", help="凭证文件路径")
@@ -766,9 +870,10 @@ def main(argv: list[str] | None = None) -> int:
     parent_entry_id = args.parent_entry_id or ""
     if args.target_url:
         parent_entry_id = parent_entry_id or parse_lexiang_url(args.target_url)
-    if not args.dry_run and not parent_entry_id:
+    if not args.dry_run and not parent_entry_id and not args.entry_id:
         print(
-            "错误：需要 --parent-entry-id 或 --target-url 指向乐享目录页",
+            "错误：需要 --parent-entry-id / --target-url（新建）"
+            "或 --entry-id（原地更新已有条目）",
             file=sys.stderr,
         )
         return 2
@@ -791,27 +896,25 @@ def main(argv: list[str] | None = None) -> int:
 
     log(f"发现 {len(html_files)} 个 HTML 文件")
 
+    if args.entry_id and len(html_files) != 1:
+        print("错误：--entry-id 只能与单个 HTML 文件配合使用", file=sys.stderr)
+        return 2
+
     # dry run does not need credentials
     if args.dry_run:
         results = []
         for hf in html_files:
-            with tempfile.TemporaryDirectory(prefix="lxhtml_zip_") as tmp:
-                bundle = package_html_bundle(hf, Path(tmp))
-            status = "degraded" if bundle.degraded_resources else "ok"
-            results.append(
-                {
-                    "source": str(hf),
-                    "title": extract_title(hf),
-                    "index_name": bundle.index_name,
-                    "content_hash": bundle.content_hash[:12],
-                    "zip_size": bundle.size,
-                    "file_count": bundle.file_count,
-                    "included_resources": bundle.included_resources,
-                    "degraded_resources": bundle.degraded_resources,
-                    "missing_resources": bundle.missing_resources,
-                    "status": status,
-                }
-            )
+            try:
+                results.append(
+                    import_one_html(
+                        None, hf, parent_entry_id, args.name, True,
+                        entry_id=args.entry_id, raw=args.raw,
+                    )
+                )
+            except (AuthError, MCPError) as error:
+                results.append(
+                    {"source": str(hf), "status": "error", "message": str(error)}
+                )
         summary = _summarize(results)
         print(json.dumps({"results": results, "summary": summary}, ensure_ascii=False, indent=2))
         return 0
@@ -845,6 +948,7 @@ def main(argv: list[str] | None = None) -> int:
             record = import_one_html(
                 client, hf, parent_entry_id, args.name, args.dry_run,
                 manifest=manifest, force=args.force,
+                entry_id=args.entry_id, raw=args.raw,
             )
             results.append(record)
             eid = record.get("entry_id", "")

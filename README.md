@@ -74,6 +74,17 @@ python3 scripts/html_import.py ./html-dir \
   --profile myorg --json
 ```
 
+### 原地更新已有条目（不新建）
+
+文档已在乐享、内容有变更时用。**不加 `--entry-id` 重传会在同目录堆出同名重复条目**（乐享不会自动合并）。
+
+```bash
+python3 scripts/html_import.py report.html \
+  --entry-id "<该条目自身的 entry_id，取自 /pages/<id>>" \
+  --name "条目名（建议与现有条目一致，避免改名）" \
+  --raw --force --profile myorg --json
+```
+
 ### 预检模式（只检测打包不上传）
 
 ```bash
@@ -104,8 +115,10 @@ python3 scripts/html_import.py report.html --dry-run --json
 | 参数 | 说明 | 必填 |
 |------|------|:----:|
 | `source` | HTML 文件路径或含 .html 的目录 | 是 |
-| `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 二选一 |
-| `--parent-entry-id` | 目标父节点 entry_id | 二选一 |
+| `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 新建时二选一 |
+| `--parent-entry-id` | 目标父节点 entry_id | 新建时二选一 |
+| `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需 `--parent-entry-id`，不加则每次都新建 | 否 |
+| `--raw` | 不打包 ZIP bundle，直接上传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（有 `<img src>` 等相对引用会直接报错），作用是保持服务端形态为 `<name>.html` 而非 `<name>.zip` | 否 |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） | 否 |
 | `--profile` | 凭证 profile（多账号时指定，如 myorg） | 否 |
 | `--credential-file` | 凭证文件路径 | 否 |

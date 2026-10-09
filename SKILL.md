@@ -31,6 +31,8 @@ description: >-
 6. 缺失资源**不静默丢弃**：降级为 `[资源缺失：xxx]` 占位提示文本写进 index.html。
 7. 每次上传后立即落盘 manifest，重跑时以 content_hash 判断是否跳过（幂等）。
 8. stdout 只输出 JSON，诊断和进度输出到 stderr。
+9. **乐享 MCP 网关（元工具）模式兜底**：服务端 `tools/list` 只暴露 `call_tool` 等 7 个元工具时，业务工具（`file_apply_upload` / `file_commit_upload` / `entry_describe_entry`）**直呼会返回 HTTP 200 + 文本 `tool is not allowed: <tool>`**（不是 JSON-RPC error）。`MCPClient._request` 已内置兜底：捕获后改走 `call_tool`（`{tool_name, arguments}`）转发。⚠️ **元工具（`get_tool_schema`）不能经 `call_tool` 调**（返回 `cannot call meta tool`），故兜底只在业务工具被拒时触发，**不要无条件转发**。
+10. **更新已有条目必须传 `--entry-id`**：不传就是新建，重传会在同目录堆出同名条目（乐享不会自动合并）。
 
 ## 上传流程（三步）
 
@@ -83,6 +85,7 @@ file_apply_upload(extension=html, upload_type=PRE_SIGNED_URL)
 - **状态结构**：`{source_path: {content_hash, entry_id, entry_name, uploaded_at}}`
 - **幂等**：重跑时 content_hash 相同 → 跳过上传，复用已记录的 entry_id
 - **增量**：源文件变更 → content_hash 不同 → 重新上传并更新 manifest
+- ⚠️ **默认是「新建条目」而非「更新原条目」**：不带 `--entry-id` 重传会在乐享目录堆出同名条目。**要原地更新务必用 `--entry-id <entry_id>`** —— 脚本会先 `entry_describe_entry` 取 `target_id` 作为 `file_id`，并把 `parent_entry_id` 指向**该条目自身**（乐享「场景2」的硬性要求，填父目录会失败）。若历史遗留了重复条目，用 `call_tool` 调 `entry_delete_entry`（`tool_name=entry_delete_entry`, `arguments={entry_id}`）删除，再用 `entry_list_children` 复核目录。
 - **断点续传**：manifest 每次成功上传后立即落盘（原子写入 .tmp + rename），中断后重跑只处理未完成的
 - **跨会话**：状态跟源文件走，不绑会话，换设备也能续传
 
@@ -135,6 +138,17 @@ python3 scripts/html_import.py report.html \
   --profile myorg --force
 ```
 
+**原地更新已有条目**（不新建；文档已在乐享、内容变更时用）：
+
+```bash
+python3 scripts/html_import.py report.html \
+  --entry-id "<该条目自身的 entry_id>" \
+  --name "条目名（建议与现有条目一致，避免改名）" \
+  --raw --force --profile myorg --json
+```
+
+> `--raw` 仅适用于**无相对路径资源**的自包含 HTML（有 `<img src>` / `<link href>` 等相对引用时会直接报错），作用是不打 zip、直接传 `.html` 原文，使服务端形态保持 `<name>.html` 而非 `<name>.zip`。
+
 只做预检（检测资源、打包、不上传）：
 
 ```bash
@@ -148,6 +162,8 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `source` | HTML 文件路径或含 .html 的目录 |
 | `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） |
 | `--parent-entry-id` | 目标父节点 entry_id（与 --target-url 二选一） |
+| `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需 `--parent-entry-id`。不加则每次都新建 |
+| `--raw` | 不打包 ZIP bundle，直接上传 `.html` 原文（仅适用于无相对路径资源的自包含 HTML） |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） |
 | `--profile` | 凭证 profile（多账号时指定，如 myorg） |
 | `--credential-file` | 凭证文件路径 |
