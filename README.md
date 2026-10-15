@@ -1,10 +1,11 @@
 # upload-html-to-lexiang
 
-将含本地相对路径资源（图片 / CSS / JS / 附件）的 HTML 打包为 ZIP bundle 上传到腾讯乐享知识库。
+将 HTML 文件上传到腾讯乐享知识库：**无本地资源时直传 HTML 源文件**（可直接预览），**含相对路径资源（图片 / CSS / JS / 视频 / 附件）时自动打包为 ZIP bundle** 上传。
 
 ## 解决什么问题
 
-HTML 文件通过 `<img src="assets/photo.png">` 引用本地相对路径图片时，直接导入乐享会丢失图片。本工具把 HTML 及其所有相对路径资源打包成一个 ZIP bundle（主文件改名 `index.html`），用 `extension=html` 标记为 HTML bundle 上传，乐享服务端识别后按 HTML 方式解析相对路径资源。
+- HTML 引用了本地相对路径资源（如 `<img src="assets/photo.png">`）时，直接导入乐享会丢失资源。本工具把 HTML 及其所有相对路径资源打包成一个 ZIP bundle（主文件改名 `index.html`），用 `extension=html` 标记为 HTML bundle 上传，乐享服务端识别后按 HTML 方式解析相对路径资源。
+- HTML 没有引用任何本地文件时，直传 HTML 源文件（`text/html`），在乐享中可直接预览。
 
 ## 工作原理
 
@@ -38,9 +39,9 @@ cd upload-html-to-lexiang
 
 本工具只依赖 Python 3 标准库，**无需安装任何第三方包**。
 
-### 2. 配置乐享凭证（一次性，5 分钟）
+### 2. 配置文件（一次性，5 分钟）
 
-工具通过乐享 MCP 接口上传文件，需要一个**个人凭证**（包含两个值）。整个配置只需做一次。
+工具通过乐享 MCP 接口上传文件。所有配置放在一个 JSON 文件里：`config/<账号>/config.json`（默认账号目录 `config/default/`），包含**凭证、接口地址、默认上传目标**三类信息——凭证必填两项，其余全部可选。整个配置只需做一次。
 
 #### 第 1 步：打开凭证页面
 
@@ -48,7 +49,7 @@ cd upload-html-to-lexiang
 
 #### 第 2 步：复制两个值
 
-在页面上获取以下两个值：
+在页面上获取以下两个值（**仅这两项必填**）：
 
 | 值 | 长什么样 | 说明 |
 |----|---------|------|
@@ -57,7 +58,7 @@ cd upload-html-to-lexiang
 
 #### 第 3 步：写入配置文件
 
-每个账号一个子目录，默认账号放在 `config/default/`。复制模板到默认账号目录，再填入真实值（在本仓库根目录执行）：
+复制模板到默认账号目录 `config/default/config.json`，再填入真实值（在本仓库根目录执行）：
 
 ```bash
 cp config/default/config.example.json config/default/config.json
@@ -72,8 +73,8 @@ chmod 600 config/default/config.json
   "company_from": "替换成你的企业标识",
   "mcp_base_url": "https://mcp.lexiang-app.com/mcp?preset=all",
   "credential_help_url": "https://lexiangla.com/ai/claw",
-  "target_space_id": "替换成目标知识库ID（与 target_entry_id 至少填一个）",
-  "target_entry_id": "替换成目标目录entry_id"
+  "target_space_id": "可选：目标知识库ID（用不到本行就整行删除）",
+  "target_entry_id": "可选：目标目录entry_id（用不到本行就整行删除）"
 }
 ```
 
@@ -83,14 +84,26 @@ chmod 600 config/default/config.json
 |------|:---:|------|
 | `mcp_token` | ✅ | 第 2 步获取的 token |
 | `company_from` | ✅ | 第 2 步获取的企业标识 |
-| `mcp_base_url` | 否 | MCP 接口地址，**私有化环境必改**（换成自己域名，见下方「私有化环境配置」）；公有云用户保持默认或删掉此字段均可 |
+| `mcp_base_url` | 否 | MCP 接口地址，**私有化环境必改**（换成自己域名，见下方「私有化环境配置」）；公有云用户保持默认或删掉此行均可 |
 | `credential_help_url` | 否 | 凭证帮助页地址，私有化环境可换成内部说明页；一般不用改 |
-| `target_entry_id` | 否 | **默认目标目录**的 entry_id（固定同步到某个目录时配置，省去每次传 `--target-url`）；命令行参数优先 |
-| `target_space_id` | 否 | 目标知识库 ID；`target_entry_id` 没填时会自动解析该知识库的**根目录**作为目标 |
+| `target_entry_id` | 否 | **默认上传目录**的 entry_id：固定上传到某个目录时填写，之后连 `--target-url` 都不用传；命令行参数优先 |
+| `target_space_id` | 否 | 目标知识库 ID：`target_entry_id` 没填时会自动解析该知识库的**根目录**作为默认目标 |
+
+**最简配置**：只需要前两行——
+
+```json
+{
+  "mcp_token": "lxmcp_你的token",
+  "company_from": "你的企业标识"
+}
+```
+
+其余可选字段（`mcp_base_url` / `credential_help_url` / `target_space_id` / `target_entry_id`）**用不到就整行删除**，留着模板里的中文占位文字会导致上传报错。
 
 **新手常见错误**：
 - JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
 - 两个必填值缺一不可，少了会报 `凭证缺少字段：xxx`
+- 可选字段用不到就**整行删除**，不要留着"替换成…"的占位文字
 - `chmod 600` 是把文件权限设为仅本人可读，防止凭证被其他用户读取，建议保留
 - 除模板 `config/default/config.example.json` 外，`config/` 下所有账号配置已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
 
@@ -230,7 +243,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--raw` | 强制直传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（默认无资源时自动走此模式） | 否 |
 | `--bundle` | 强制 ZIP bundle 打包（默认有相对路径资源时自动走此模式） | 否 |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） | 否 |
-| `--profile` | 凭证 profile（多账号时指定，如 myorg） | 否 |
+| `--profile` | 账号 profile，对应 `config/<名字>/` 目录（如 myorg → `config/myorg/config.json`） | 否 |
 | `--config-file` | 配置文件路径（兼容旧参数名 `--credential-file`） | 否 |
 | `--mcp-base-url` | MCP 接口地址（私有化环境；优先级：本参数 > 配置文件 `mcp_base_url` > 公有云默认） | 否 |
 | `--dry-run` | 只检测打包不上传 | 否 |
@@ -278,7 +291,7 @@ report.zip
 - **兼容性如实记录**：缺失资源降级为占位提示文本，不静默丢弃；每次输出成功/降级/失败三态清单。
 - **幂等 + 增量 + 断点续传**：以源文件路径为 key、content_hash 判断变更，manifest 立即落盘，重跑不重不漏。
 - **纯标准库实现**：仅依赖 Python 3 标准库（urllib/zipfile/html.parser/hashlib），无需安装第三方包。
-- **凭证独立**：只需一个 `lxmcp_` token + `company_from`，一行命令写入 JSON 文件即可。
+- **配置极简**：一个 `config.json` 搞定，最简两行（`mcp_token` + `company_from`）即可跑通公有云；接口地址与默认上传目标均为可选配置，支持多账号子目录隔离。
 
 ## 与其他上传方式的区别
 
