@@ -83,6 +83,7 @@ chmod 600 config/credentials.json
 | `company_from` | ✅ | 第 2 步获取的企业标识 |
 | `mcp_base_url` | 否 | MCP 接口地址，**私有化环境必改**（换成自己域名，见下方「私有化环境配置」）；公有云用户保持默认或删掉此字段均可 |
 | `credential_help_url` | 否 | 凭证帮助页地址，私有化环境可换成内部说明页；一般不用改 |
+| `target_url` | 否 | **默认目标目录**（固定同步到某个目录时配置，省去每次传 `--target-url`）；填乐享目录页 URL 或 32 位 entry_id 均可；命令行参数优先于此字段 |
 
 **新手常见错误**：
 - JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
@@ -161,6 +162,8 @@ https://你的企业域名.lexiangla.com/pages/一串字母数字?company_from=�
 
 把这个 URL 原样传给 `--target-url` 即可，工具会自动解析出目标目录。
 
+**固定同步到同一目录？** 把这个 URL 写进凭证文件的 `target_url` 字段（见上面字段说明表），之后连 `--target-url` 都不用传；命令行显式指定的目标优先生效。
+
 ### 单个 HTML 文件
 
 ```bash
@@ -221,8 +224,8 @@ python3 scripts/html_import.py report.html --dry-run --json
 | 参数 | 说明 | 必填 |
 |------|------|:----:|
 | `source` | HTML 文件路径或含 .html 的目录 | 是 |
-| `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 新建时二选一 |
-| `--parent-entry-id` | 目标父节点 entry_id | 新建时二选一 |
+| `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 新建时三选一 |
+| `--parent-entry-id` | 目标父节点 entry_id | 新建时三选一 |
 | `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需 `--parent-entry-id`，不加则每次都新建 | 否 |
 | `--raw` | 强制直传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（默认无资源时自动走此模式） | 否 |
 | `--bundle` | 强制 ZIP bundle 打包（默认有相对路径资源时自动走此模式） | 否 |
@@ -232,6 +235,8 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--mcp-base-url` | MCP 接口地址（私有化环境；优先级：本参数 > 凭证文件 `mcp_base_url` > 公有云默认） | 否 |
 | `--dry-run` | 只检测打包不上传 | 否 |
 | `--json` | stdout 只输出 JSON | 否 |
+
+> **新建条目时目标三选一**：`--target-url` / `--parent-entry-id` / 凭证文件 `target_url` 字段（都不传且无 `--entry-id` 会报错）。优先级：命令行 > 凭证文件。
 
 ## ZIP bundle 结构
 

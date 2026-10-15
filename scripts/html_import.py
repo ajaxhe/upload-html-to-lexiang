@@ -90,6 +90,8 @@ class PersonalCredential:
     # 可选：私有化环境覆盖公有云默认 endpoint（见 DEFAULT_* 常量注释）
     mcp_base_url: str = ""
     credential_help_url: str = ""
+    # 可选：默认目标目录（支持完整 URL 或裸 entry_id），CLI 参数优先
+    target_url: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "PersonalCredential":
@@ -112,6 +114,7 @@ class PersonalCredential:
             company_from=pick("company_from", "mcp_company_from"),
             mcp_base_url=pick("mcp_base_url", "mcp_url", "mcp_endpoint"),
             credential_help_url=pick("credential_help_url", "credential_url"),
+            target_url=pick("target_url", "default_target_url"),
         )
 
     @property
@@ -1011,17 +1014,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     log = (lambda msg: None) if args.json else (lambda msg: print(msg, file=sys.stderr))
 
-    # resolve target
+    # resolve target: CLI 优先；凭证文件 target_url 字段兜底（加载凭证后合并）
     parent_entry_id = args.parent_entry_id or ""
     if args.target_url:
         parent_entry_id = parent_entry_id or parse_lexiang_url(args.target_url)
-    if not args.dry_run and not parent_entry_id and not args.entry_id:
-        print(
-            "错误：需要 --parent-entry-id / --target-url（新建）"
-            "或 --entry-id（原地更新已有条目）",
-            file=sys.stderr,
-        )
-        return 2
 
     # collect html files
     source = Path(args.source).expanduser()
@@ -1083,6 +1079,26 @@ def main(argv: list[str] | None = None) -> int:
         f"company_from={cred.company_from}, "
         f"mcp_base_url={cred.resolved_mcp_base_url}"
     )
+
+    # 凭证文件 target_url 字段兜底：CLI 未指定目标时使用（支持完整
+    # URL 或 32 位裸 entry_id）；--entry-id 原地更新时无需目标目录
+    if not parent_entry_id and not args.entry_id and cred.target_url:
+        fallback = cred.target_url.strip()
+        if re.fullmatch(r"[0-9a-fA-F]{32}", fallback):
+            parent_entry_id = fallback
+        else:
+            parent_entry_id = parse_lexiang_url(fallback)
+        if parent_entry_id:
+            log(f"目标目录来自凭证文件 target_url: {parent_entry_id}")
+
+    if not parent_entry_id and not args.entry_id:
+        print(
+            "错误：需要 --parent-entry-id / --target-url（新建）、"
+            "--entry-id（原地更新已有条目），"
+            "或在凭证文件配置 target_url 字段作为默认目标目录",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         client = MCPClient(cred)
