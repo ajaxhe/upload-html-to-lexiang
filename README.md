@@ -93,6 +93,23 @@ chmod 600 config/profiles/myorg.json
 
 使用时加 `--profile myorg` 指定；不加 `--profile` 时始终读默认的 `config/credentials.json`。
 
+#### 私有化环境配置（可选）
+
+脚本默认连公有云（`https://mcp.lexiang-app.com/mcp`）。在**乐享私有化环境**运行时，在凭证文件里加 `mcp_base_url` 字段指向私有化 MCP 接口（向私有化环境管理员获取）：
+
+```json
+{
+  "mcp_token": "私有化环境的token",
+  "company_from": "你的企业标识",
+  "mcp_base_url": "https://你的私有化域名/mcp?preset=all"
+}
+```
+
+说明：
+- `mcp_base_url` 可自带 query 参数（如 `?preset=all`），拼接时会**保留已配参数**，并自动确保 `preset=all` 与 `company_from` 两个参数始终存在（不重复追加）
+- 不写 `mcp_base_url` 字段 = 连公有云
+- 临时调试也可用命令行 `--mcp-base-url` 覆盖（优先级：命令行 > 凭证文件 > 公有云默认）
+
 #### 配置文件放在哪里？（优先级从高到低）
 
 | 位置 | 何时读取 |
@@ -198,6 +215,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） | 否 |
 | `--profile` | 凭证 profile（多账号时指定，如 myorg） | 否 |
 | `--credential-file` | 凭证文件路径 | 否 |
+| `--mcp-base-url` | MCP 接口地址（私有化环境；优先级：本参数 > 凭证文件 `mcp_base_url` > 公有云默认） | 否 |
 | `--dry-run` | 只检测打包不上传 | 否 |
 | `--json` | stdout 只输出 JSON | 否 |
 

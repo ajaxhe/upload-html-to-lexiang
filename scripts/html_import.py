@@ -41,10 +41,13 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 CLI_API = "1"
-CREDENTIAL_HELP_URL = "https://lexiangla.com/ai/claw"
-MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
+# 公有云默认 endpoint。私有化环境在凭证文件里配置 mcp_base_url /
+# credential_help_url 覆盖（endpoint 跟凭证走：私有化 token 与私有化
+# 域名天然绑定在同一环境）。
+DEFAULT_CREDENTIAL_HELP_URL = "https://lexiangla.com/ai/claw"
+DEFAULT_MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
 
 # 配置默认放在 skill 目录下（方便查看和调用）：
 #   <skill>/config/credentials.json          默认凭证
@@ -80,6 +83,9 @@ class MCPError(RuntimeError):
 class PersonalCredential:
     mcp_token: str
     company_from: str
+    # 可选：私有化环境覆盖公有云默认 endpoint（见 DEFAULT_* 常量注释）
+    mcp_base_url: str = ""
+    credential_help_url: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "PersonalCredential":
@@ -100,7 +106,17 @@ class PersonalCredential:
         return cls(
             mcp_token=pick("mcp_token", "access_token", "token", "LEXIANG_TOKEN"),
             company_from=pick("company_from", "mcp_company_from"),
+            mcp_base_url=pick("mcp_base_url", "mcp_url", "mcp_endpoint"),
+            credential_help_url=pick("credential_help_url", "credential_url"),
         )
+
+    @property
+    def resolved_mcp_base_url(self) -> str:
+        return self.mcp_base_url or DEFAULT_MCP_BASE_URL
+
+    @property
+    def resolved_credential_help_url(self) -> str:
+        return self.credential_help_url or DEFAULT_CREDENTIAL_HELP_URL
 
     @classmethod
     def from_text(cls, raw: str) -> "PersonalCredential":
@@ -162,7 +178,8 @@ def load_credential(profile: str | None, credential_file: str | None) -> Persona
     if not path.exists():
         raise AuthError(
             f"凭证文件不存在：{path}\n"
-            f"请访问 {CREDENTIAL_HELP_URL} 获取凭证，"
+            f"请访问 {DEFAULT_CREDENTIAL_HELP_URL} 获取凭证"
+            f"（私有化环境请咨询管理员获取本环境的凭证与接口地址），"
             f"然后执行（配置默认放在 skill 目录下）：\n"
             f"  mkdir -p {CONFIG_DIR} && "
             f"cat > {CONFIG_DIR / 'credentials.json'} << 'EOF'\n"
@@ -198,13 +215,24 @@ class MCPClient:
 
     @property
     def url(self) -> str:
-        # 2026-10 起乐享 MCP 网关要求带 preset=all 才返回全量业务工具列表
-        # （不带时 tools/list 只有 7 个元工具，业务工具直呼会返回
-        # "tool is not allowed"）；带上后业务工具直呼可用。
-        return (
-            f"{MCP_BASE_URL}?company_from="
-            f"{urllib.parse.quote(self.credential.company_from)}&preset=all"
-        )
+        # mcp_base_url 来自凭证文件（私有化环境自定义），默认公有云。
+        # 配置值可自带 query 参数（如 "https://私有域名/mcp?preset=all"），
+        # 拼接时保留已配参数，并强制确保：
+        #   - preset=all：2026-10 起乐享 MCP 网关要求该参数才返回全量
+        #     业务工具（不带时 tools/list 只有 7 个元工具，业务工具直呼
+        #     会返回 "tool is not allowed"）
+        #   - company_from：路由到正确企业
+        base = self.credential.resolved_mcp_base_url
+        parsed = urllib.parse.urlparse(base)
+        query: dict[str, str] = {}
+        for key, values in urllib.parse.parse_qs(
+            parsed.query, keep_blank_values=True
+        ).items():
+            if values:
+                query[key] = values[0]
+        query.setdefault("preset", "all")
+        query["company_from"] = self.credential.company_from
+        return parsed._replace(query=urllib.parse.urlencode(query)).geturl()
 
     @staticmethod
     def _parse_transport(raw: str) -> dict:
@@ -260,7 +288,8 @@ class MCPClient:
                 detail = error.read().decode("utf-8", errors="replace")
                 if error.code == 401:
                     raise AuthError(
-                        f"乐享凭证无效或已过期（401）。请访问 {CREDENTIAL_HELP_URL} 续期"
+                        "乐享凭证无效或已过期（401）。请访问 "
+                        f"{self.credential.resolved_credential_help_url} 续期"
                     ) from error
                 if error.code == 403 and "WAF" in detail:
                     raise MCPError(
@@ -908,6 +937,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", help="凭证 profile（多账号时指定，如 myorg）")
     parser.add_argument("--credential-file", help="凭证文件路径")
     parser.add_argument(
+        "--mcp-base-url",
+        help=(
+            "MCP 接口地址（私有化环境用；优先级：本参数 > 凭证文件 "
+            "mcp_base_url 字段 > 公有云默认）。可自带 query 参数，"
+            "preset=all 与 company_from 会自动确保带上"
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="只打包检测不上传，输出将包含的资源清单",
@@ -1000,7 +1037,13 @@ def main(argv: list[str] | None = None) -> int:
     except AuthError as error:
         print(f"凭证错误：{error}", file=sys.stderr)
         return 3
-    log(f"使用凭证 profile={args.profile or 'default'}, company_from={cred.company_from}")
+    if args.mcp_base_url:
+        cred.mcp_base_url = args.mcp_base_url
+    log(
+        f"使用凭证 profile={args.profile or 'default'}, "
+        f"company_from={cred.company_from}, "
+        f"mcp_base_url={cred.resolved_mcp_base_url}"
+    )
 
     try:
         client = MCPClient(cred)

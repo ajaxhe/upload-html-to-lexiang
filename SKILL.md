@@ -24,7 +24,7 @@ description: >-
 ## 硬性规则
 
 1. 只使用从 <https://lexiangla.com/ai/claw> 获取的个人凭证（`lxmcp_` 前缀 MCP API Token）。
-2. 凭证文件格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}`，**默认保存在本 skill 目录下 `config/credentials.json`**，权限 0600（legacy 路径 `~/.config/lexiang-upload/` 仍自动回退兼容）。
+2. 凭证文件格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}`，**默认保存在本 skill 目录下 `config/credentials.json`**，权限 0600（legacy 路径 `~/.config/lexiang-upload/` 仍自动回退兼容）。可选字段 `mcp_base_url`：私有化环境的 MCP 接口地址（endpoint 跟凭证走，不硬编码代码里；不配 = 公有云 `https://mcp.lexiang-app.com/mcp`）。`mcp_base_url` 可自带 query 参数（如 `?preset=all`），拼接时保留已配参数并自动确保 `preset=all` 与 `company_from` 存在。命令行 `--mcp-base-url` 可临时覆盖（优先级：CLI > 凭证文件 > 默认）。
 3. **上传模式自动判断（默认 auto，2026-10-15 起）**：先检测 HTML 是否引用本地相对路径资源——**无依赖 → raw 直传 HTML 源文件**（`mime_type=text/html`、`name=<标题>.html`，可直接预览）；**有依赖 → ZIP bundle 打包**（主文件改名 `index.html` + 资源保持相对路径，`extension=html` 标记，服务端解包转换）。`--raw` / `--bundle` 可强制覆盖。
 4. bundle 必须传 `extension=html`（区分普通 zip 和 HTML bundle）。
 5. `file_apply_upload` 的 `name` 参数用原文档标题（取自 HTML `<title>` 或 `--name`）：raw 模式后缀 `.html`；**bundle 模式后缀必须是 `.zip`**（`<标题>.zip`）——`.zip` 名 + `extension=html` 才会走服务端 HTML bundle 解包转换管道。
