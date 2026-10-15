@@ -15,9 +15,10 @@ The extension=html parameter tells Lexiang that this zip is an HTML bundle
 (not a regular zip file), so relative-path resources inside are resolved
 against index.html at the archive root.
 
-Credentials are stored in ~/.config/lexiang-upload/ (JSON format:
-{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}), obtained from
-https://lexiangla.com/ai/claw.
+Credentials are stored in the skill directory by default (config/credentials.json,
+JSON format: {"mcp_token": "lxmcp_xxx", "company_from": "xxx"}), obtained from
+https://lexiangla.com/ai/claw. The legacy location
+~/.config/lexiang-upload/ is still honored as a fallback.
 """
 from __future__ import annotations
 
@@ -40,13 +41,27 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 CLI_API = "1"
 CREDENTIAL_HELP_URL = "https://lexiangla.com/ai/claw"
 MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
-DEFAULT_CREDENTIALS = Path("~/.config/lexiang-upload/credentials.json").expanduser()
-MANIFEST_PATH = Path("~/.config/lexiang-upload/manifests/html-import.json").expanduser()
-PROFILE_CREDENTIALS_DIR = Path("~/.config/lexiang-upload/profiles").expanduser()
+
+# 配置默认放在 skill 目录下（方便查看和调用）：
+#   <skill>/config/credentials.json          默认凭证
+#   <skill>/config/profiles/<name>.json       命名 profile 凭证
+#   <skill>/manifests/html-import.json        上传状态 manifest
+# legacy 路径（~/.config/lexiang-upload/）作为回退：新路径不存在时自动使用旧路径，
+# 老用户升级后无需迁移即可继续使用。
+SCRIPT_DIR = Path(__file__).resolve().parent
+SKILL_DIR = SCRIPT_DIR.parent
+CONFIG_DIR = SKILL_DIR / "config"
+LEGACY_CONFIG_DIR = Path("~/.config/lexiang-upload").expanduser()
+DEFAULT_CREDENTIALS = CONFIG_DIR / "credentials.json"
+LEGACY_CREDENTIALS = LEGACY_CONFIG_DIR / "credentials.json"
+PROFILE_CREDENTIALS_DIR = CONFIG_DIR / "profiles"
+LEGACY_PROFILE_CREDENTIALS_DIR = LEGACY_CONFIG_DIR / "profiles"
+MANIFEST_PATH = SKILL_DIR / "manifests" / "html-import.json"
+LEGACY_MANIFEST_PATH = LEGACY_CONFIG_DIR / "manifests" / "html-import.json"
 PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -122,12 +137,23 @@ class PersonalCredential:
 
 
 def resolve_credential_file(profile: str | None, credential_file: str | None) -> Path:
+    """Resolve credential path: explicit --credential-file > skill-dir config > legacy."""
     if credential_file:
         return Path(credential_file).expanduser()
     if profile:
         if not PROFILE_RE.match(profile):
             raise AuthError(f"profile 名非法：{profile}")
-        return PROFILE_CREDENTIALS_DIR / f"{profile}.json"
+        primary = PROFILE_CREDENTIALS_DIR / f"{profile}.json"
+        if primary.exists():
+            return primary
+        legacy = LEGACY_PROFILE_CREDENTIALS_DIR / f"{profile}.json"
+        if legacy.exists():
+            return legacy
+        return primary
+    if DEFAULT_CREDENTIALS.exists():
+        return DEFAULT_CREDENTIALS
+    if LEGACY_CREDENTIALS.exists():
+        return LEGACY_CREDENTIALS
     return DEFAULT_CREDENTIALS
 
 
@@ -137,12 +163,13 @@ def load_credential(profile: str | None, credential_file: str | None) -> Persona
         raise AuthError(
             f"凭证文件不存在：{path}\n"
             f"请访问 {CREDENTIAL_HELP_URL} 获取凭证，"
-            f"然后执行：\n"
-            f"  mkdir -p ~/.config/lexiang-upload && "
-            f"cat > ~/.config/lexiang-upload/credentials.json << 'EOF'\n"
+            f"然后执行（配置默认放在 skill 目录下）：\n"
+            f"  mkdir -p {CONFIG_DIR} && "
+            f"cat > {CONFIG_DIR / 'credentials.json'} << 'EOF'\n"
             f'  {{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}}\n'
             f"  EOF\n"
-            f"  chmod 600 ~/.config/lexiang-upload/credentials.json"
+            f"  chmod 600 {CONFIG_DIR / 'credentials.json'}\n"
+            f"多账号：凭证放到 {PROFILE_CREDENTIALS_DIR}/<name>.json，用 --profile <name> 指定"
         )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -171,7 +198,13 @@ class MCPClient:
 
     @property
     def url(self) -> str:
-        return f"{MCP_BASE_URL}?company_from={urllib.parse.quote(self.credential.company_from)}"
+        # 2026-10 起乐享 MCP 网关要求带 preset=all 才返回全量业务工具列表
+        # （不带时 tools/list 只有 7 个元工具，业务工具直呼会返回
+        # "tool is not allowed"）；带上后业务工具直呼可用。
+        return (
+            f"{MCP_BASE_URL}?company_from="
+            f"{urllib.parse.quote(self.credential.company_from)}&preset=all"
+        )
 
     @staticmethod
     def _parse_transport(raw: str) -> dict:
@@ -659,7 +692,10 @@ def import_one_html(
             bundle = package_html_bundle(html_path, Path(tmp), zip_name=title)
             payload_path = bundle.zip_path
             content_hash = bundle.content_hash
-            upload_name = f"{title}.zip"
+            # ⚠️ name 必须用 .html 后缀（2026-10 服务端路由调整：按
+            # mime_type + name 后缀 + extension 推断导入任务类型；
+            # .zip 后缀会走普通 zip 导入任务，报 50090009 导入任务失败）
+            upload_name = f"{title}.html"
             mime_type = "application/zip"
             file_count = bundle.file_count
             index_name = bundle.index_name
@@ -799,6 +835,15 @@ def _summarize(results: list[dict]) -> dict:
     }
 
 
+def resolve_manifest_path(explicit: str | None) -> Path:
+    """Resolve manifest path: explicit --manifest-path > skill-dir > legacy."""
+    if explicit:
+        return Path(explicit).expanduser()
+    if MANIFEST_PATH.exists() or not LEGACY_MANIFEST_PATH.exists():
+        return MANIFEST_PATH
+    return LEGACY_MANIFEST_PATH
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
@@ -936,7 +981,7 @@ def main(argv: list[str] | None = None) -> int:
     # init manifest for idempotency (principle 3)
     manifest = None
     if not args.no_incremental:
-        mpath = Path(args.manifest_path).expanduser() if args.manifest_path else MANIFEST_PATH
+        mpath = resolve_manifest_path(args.manifest_path)
         manifest = Manifest(mpath)
         log(f"manifest: {mpath}")
 

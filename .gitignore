@@ -9,3 +9,7 @@ venv/
 *.log
 out/
 output/
+
+# 凭证与上传状态（含 token / entry_id，严禁入库）
+config/
+manifests/

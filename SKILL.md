@@ -24,14 +24,14 @@ description: >-
 ## 硬性规则
 
 1. 只使用从 <https://lexiangla.com/ai/claw> 获取的个人凭证（`lxmcp_` 前缀 MCP API Token）。
-2. 凭证文件格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}`，保存到 `~/.config/lexiang-upload/`，权限 0600。
+2. 凭证文件格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}`，**默认保存在本 skill 目录下 `config/credentials.json`**，权限 0600（legacy 路径 `~/.config/lexiang-upload/` 仍自动回退兼容）。
 3. ZIP bundle 内的主 HTML 文件必须命名为 `index.html`（否则乐享无法识别 bundle 入口）。
 4. 必须传 `extension=html`（区分普通 zip 和 HTML bundle）。
-5. `file_apply_upload` 的 `name` 参数用原文档标题（取自 HTML `<title>` 或 `--name`），作为 zip 文件名和乐享条目名。不要用 "index" 或固定名。
+5. `file_apply_upload` 的 `name` 参数用原文档标题（取自 HTML `<title>` 或 `--name`），**后缀必须是 `.html`**（如 `报告.html`），作为上传文件名和乐享条目名。不要用 "index"、固定名或 `.zip` 后缀。
 6. 缺失资源**不静默丢弃**：降级为 `[资源缺失：xxx]` 占位提示文本写进 index.html。
 7. 每次上传后立即落盘 manifest，重跑时以 content_hash 判断是否跳过（幂等）。
 8. stdout 只输出 JSON，诊断和进度输出到 stderr。
-9. **乐享 MCP 网关（元工具）模式兜底**：服务端 `tools/list` 只暴露 `call_tool` 等 7 个元工具时，业务工具（`file_apply_upload` / `file_commit_upload` / `entry_describe_entry`）**直呼会返回 HTTP 200 + 文本 `tool is not allowed: <tool>`**（不是 JSON-RPC error）。`MCPClient._request` 已内置兜底：捕获后改走 `call_tool`（`{tool_name, arguments}`）转发。⚠️ **元工具（`get_tool_schema`）不能经 `call_tool` 调**（返回 `cannot call meta tool`），故兜底只在业务工具被拒时触发，**不要无条件转发**。
+9. **乐享 MCP 网关（元工具）模式与 preset=all**：2026-10 起乐享 MCP 服务端要求 MCP URL 带 `preset=all` 查询参数，`tools/list` 才返回全量业务工具（93 个）；不带时只有 `call_tool` 等 7 个元工具，业务工具（`file_apply_upload` / `file_commit_upload` / `entry_describe_entry`）直呼会返回 HTTP 200 + 文本 `tool is not allowed: <tool>`（不是 JSON-RPC error）。`MCPClient.url` 已内置 `preset=all`。同时保留 `MCPClient._request` 兜底：万一业务工具仍被拒（返回 `tool is not allowed`），自动改走 `call_tool`（`{tool_name, arguments}`）转发。⚠️ **元工具（`get_tool_schema`）不能经 `call_tool` 调**（返回 `cannot call meta tool`），故兜底只在业务工具被拒时触发，**不要无条件转发**。
 10. **更新已有条目必须传 `--entry-id`**：不传就是新建，重传会在同目录堆出同名条目（乐享不会自动合并）。
 
 ## 上传流程（三步）
@@ -48,11 +48,11 @@ file_apply_upload(extension=html, upload_type=PRE_SIGNED_URL)
 ```
 
 **关键参数**：
-- `mime_type=application/zip`（文件是 zip 格式）
+- `mime_type=application/zip`（bundle 文件本身是 zip 格式）
 - `extension=html`（告诉乐享这是 HTML bundle，不是普通压缩包）
-- `upload_type=PRE_SIGNED_URL`（返回预签名 URL，直接 PUT）
-- `name`：zip 文件名（如 `report.zip`）
+- `name`：上传文件名（如 `报告.html`）。⚠️ **必须用 `.html` 后缀**——2026-10 服务端路由调整后按 `mime_type + name 后缀 + extension` 推断导入任务类型，`.zip` 后缀会走普通 zip 导入任务并报 50090009「导入任务失败」
 - `size`：zip 文件大小（字节数，字符串）
+- `upload_type=PRE_SIGNED_URL`（返回预签名 URL，直接 PUT）
 
 ## 兼容性处理（原则2）
 
@@ -81,7 +81,7 @@ file_apply_upload(extension=html, upload_type=PRE_SIGNED_URL)
 
 - **唯一标识**：源文件绝对路径（resolve 后的绝对路径）
 - **变更检测**：content_hash = sha256(HTML 原文 + 所有资源文件字节)，基于源文件内容而非 zip 字节（zip 元数据不稳定）
-- **manifest 路径**：`~/.config/lexiang-upload/manifests/html-import.json`，权限 0600
+- **manifest 路径**：本 skill 目录下 `manifests/html-import.json`，权限 0600（legacy 路径 `~/.config/lexiang-upload/manifests/html-import.json` 自动回退兼容）
 - **状态结构**：`{source_path: {content_hash, entry_id, entry_name, uploaded_at}}`
 - **幂等**：重跑时 content_hash 相同 → 跳过上传，复用已记录的 entry_id
 - **增量**：源文件变更 → content_hash 不同 → 重新上传并更新 manifest
@@ -91,26 +91,29 @@ file_apply_upload(extension=html, upload_type=PRE_SIGNED_URL)
 
 ## 凭证配置
 
+配置默认放在 **本 skill 目录下**（`config/`），方便查看和调用；`~/.config/lexiang-upload/` 作为 legacy 回退路径仍可用。
+
 1. 访问 <https://lexiangla.com/ai/claw> 获取个人凭证（`lxmcp_` 前缀 token + `company_from`）
-2. 写入凭证文件：
+2. 写入凭证文件（skill 目录按实际路径替换）：
 
 ```bash
-mkdir -p ~/.config/lexiang-upload && cat > ~/.config/lexiang-upload/credentials.json << 'EOF'
+mkdir -p <skill-dir>/config && cat > <skill-dir>/config/credentials.json << 'EOF'
 {"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
 EOF
-chmod 600 ~/.config/lexiang-upload/credentials.json
+chmod 600 <skill-dir>/config/credentials.json
 ```
 
 多账号用命名 profile：
 
 ```bash
-mkdir -p ~/.config/lexiang-upload/profiles && cat > ~/.config/lexiang-upload/profiles/myorg.json << 'EOF'
+mkdir -p <skill-dir>/config/profiles && cat > <skill-dir>/config/profiles/myorg.json << 'EOF'
 {"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
 EOF
-chmod 600 ~/.config/lexiang-upload/profiles/myorg.json
+chmod 600 <skill-dir>/config/profiles/myorg.json
 ```
 
 > AI agent 可在用户提供凭证后自动执行上述命令完成配置，无需用户手动操作。
+> ⚠️ `config/` 与 `manifests/` 已在 `.gitignore` 中排除，凭证和上传状态不会泄漏到 git 仓库。
 
 ## 上传
 
@@ -170,7 +173,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--dry-run` | 只检测打包不上传 |
 | `--force` | 强制重新上传，忽略 manifest 幂等检查 |
 | `--no-incremental` | 禁用 manifest（每次全量上传，不记状态） |
-| `--manifest-path` | manifest 文件路径（默认 `~/.config/lexiang-upload/manifests/html-import.json`） |
+| `--manifest-path` | manifest 文件路径（默认 skill 目录下 `manifests/html-import.json`） |
 | `--json` | stdout 只输出 JSON |
 
 ## ZIP bundle 结构

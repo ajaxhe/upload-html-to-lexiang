@@ -38,23 +38,25 @@ cd upload-html-to-lexiang
 
 ### 2. 配置乐享凭证
 
-访问 https://lexiangla.com/ai/claw 获取个人凭证（`lxmcp_` 前缀 token + `company_from`），然后写入凭证文件：
+访问 https://lexiangla.com/ai/claw 获取个人凭证（`lxmcp_` 前缀 token + `company_from`），然后写入凭证文件。配置默认放在**仓库目录下 `config/`**（方便查看和调用）；legacy 路径 `~/.config/lexiang-upload/` 仍自动回退兼容：
 
 ```bash
-mkdir -p ~/.config/lexiang-upload && cat > ~/.config/lexiang-upload/credentials.json << 'EOF'
+mkdir -p config && cat > config/credentials.json << 'EOF'
 {"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
 EOF
-chmod 600 ~/.config/lexiang-upload/credentials.json
+chmod 600 config/credentials.json
 ```
 
 多账号用命名 profile：
 
 ```bash
-mkdir -p ~/.config/lexiang-upload/profiles && cat > ~/.config/lexiang-upload/profiles/myorg.json << 'EOF'
+mkdir -p config/profiles && cat > config/profiles/myorg.json << 'EOF'
 {"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
 EOF
-chmod 600 ~/.config/lexiang-upload/profiles/myorg.json
+chmod 600 config/profiles/myorg.json
 ```
+
+> `config/` 与 `manifests/` 已在 `.gitignore` 中排除，凭证和上传状态不会被提交到 git。
 
 ## 使用
 
@@ -118,7 +120,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 新建时二选一 |
 | `--parent-entry-id` | 目标父节点 entry_id | 新建时二选一 |
 | `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需 `--parent-entry-id`，不加则每次都新建 | 否 |
-| `--raw` | 不打包 ZIP bundle，直接上传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（有 `<img src>` 等相对引用会直接报错），作用是保持服务端形态为 `<name>.html` 而非 `<name>.zip` | 否 |
+| `--raw` | 不打包 ZIP bundle，直接上传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（有 `<img src>` 等相对引用会直接报错） | 否 |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） | 否 |
 | `--profile` | 凭证 profile（多账号时指定，如 myorg） | 否 |
 | `--credential-file` | 凭证文件路径 | 否 |
@@ -139,6 +141,10 @@ report.zip
 ```
 
 乐享服务端识别 `extension=html` 后，以 `index.html` 为入口解析 bundle，相对路径资源按原始路径匹配。
+
+> ⚠️ 2026-10 服务端路由调整：上传名（`file_apply_upload` 的 `name`）必须用 `.html` 后缀（本工具已内置）。服务端按 `mime_type + name 后缀 + extension` 推断导入任务类型，`.zip` 后缀会走普通 zip 导入任务并报 50090009「导入任务失败」。
+>
+> 同时 MCP 网关要求 URL 带 `preset=all` 参数才返回全量业务工具（本工具已内置）。
 
 ## 资源检测范围
 
@@ -174,7 +180,7 @@ report.zip
 - **幂等**：同一文件重复上传不会创建重复条目。脚本用 content_hash（基于源 HTML + 资源文件内容）判断是否变更，未变更则跳过。
 - **增量**：源文件修改后重跑，content_hash 不同会触发重新上传并更新 manifest。
 - **断点续传**：manifest 每次成功后立即原子写入，中断后重跑只处理未完成的。
-- **manifest 位置**：`~/.config/lexiang-upload/manifests/html-import.json`
+- **manifest 位置**：仓库目录下 `manifests/html-import.json`（legacy 路径 `~/.config/lexiang-upload/manifests/` 自动回退兼容）
 
 ```bash
 # 强制重新上传（忽略幂等）
