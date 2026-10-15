@@ -24,7 +24,7 @@ description: >-
 ## 硬性规则
 
 1. 只使用从 <https://lexiangla.com/ai/claw> 获取的个人凭证（`lxmcp_` 前缀 MCP API Token）。
-2. 配置文件（凭证 + 端点 + 目的端，每账号一个子目录）：**默认 `config/default/config.json`**，多账号 `config/<profile>/config.json`（`--profile <name>` 指定），权限 0600。格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}` + 可选字段：`mcp_base_url`（私有化 MCP 接口地址，endpoint 跟凭证走不硬编码；不配 = 公有云 `https://mcp.lexiang-app.com/mcp`；可自带 query 参数如 `?preset=all`，拼接时保留已配参数并自动确保 `preset=all` 与 `company_from` 存在）、`credential_help_url`、`target_entry_id`（默认目标目录，CLI 优先）、`target_space_id`（无 entry_id 时自动解析知识库根目录）。legacy 自动回退：`config/credentials.json`、`config/profiles/<name>.json`、`~/.config/lexiang-upload/` 同名结构。命令行 `--mcp-base-url` 可临时覆盖（优先级：CLI > 配置文件 > 默认）。
+2. 配置文件（凭证 + 端点 + 目的端，每账号一个子目录）：**默认 `config/default/config.json`**，多账号 `config/<profile>/config.json`（`--profile <name>` 指定），权限 0600。**必填三项**：`mcp_token`、`company_from`、`target_space_id`（目标知识库 ID）。可选字段：`target_entry_id`（默认上传目录，**不填 = 上传到 target_space_id 知识库根目录**，CLI 优先；已配 entry_id 或 legacy target_url 时豁免 space_id 校验）、`mcp_base_url`（私有化 MCP 接口地址，endpoint 跟凭证走不硬编码；不配 = 公有云 `https://mcp.lexiang-app.com/mcp`；可自带 query 参数如 `?preset=all`，拼接时保留已配参数并自动确保 `preset=all` 与 `company_from` 存在）、`credential_help_url`。目标解析优先级：CLI `--parent-entry-id`/`--target-url` > `target_entry_id` > `target_url`（legacy）> `target_space_id` 根目录（经 `space_describe_space`）。legacy 自动回退：`config/credentials.json`、`config/profiles/<name>.json`、`~/.config/lexiang-upload/` 同名结构。命令行 `--mcp-base-url` 可临时覆盖（优先级：CLI > 配置文件 > 默认）。
 3. **上传模式自动判断（默认 auto）**：先检测 HTML 是否引用本地相对路径资源——**无依赖 → raw 直传 HTML 源文件**（`mime_type=text/html`、`name=<标题>.html`，可直接预览）；**有依赖 → ZIP bundle 打包**（主文件改名 `index.html` + 资源保持相对路径，`extension=html` 标记，服务端解包转换）。`--raw` / `--bundle` 可强制覆盖。
 4. bundle 必须传 `extension=html`（区分普通 zip 和 HTML bundle）。
 5. `file_apply_upload` 的 `name` 参数用原文档标题（取自 HTML `<title>` 或 `--name`）：raw 模式后缀 `.html`；**bundle 模式后缀必须是 `.zip`**（`<标题>.zip`）——`.zip` 名 + `extension=html` 才会走服务端 HTML bundle 解包转换管道。
@@ -170,13 +170,13 @@ python3 scripts/html_import.py report.html --dry-run --json
 | 参数 | 说明 |
 |------|------|
 | `source` | HTML 文件路径或含 .html 的目录 |
-| `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） |
-| `--parent-entry-id` | 目标父节点 entry_id（与 --target-url 二选一） |
-| `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需 `--parent-entry-id`。不加则每次都新建 |
+| `--target-url` | 临时指定乐享目标目录页 URL（自动解析 parent_entry_id；不传则用配置文件默认目标） |
+| `--parent-entry-id` | 临时指定目标父节点 entry_id（不传则用配置文件默认目标） |
+| `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需目标目录。不加则每次都新建 |
 | `--raw` | 强制直传 `.html` 原文（仅适用于无相对路径资源的自包含 HTML；默认无资源时自动走此模式） |
 | `--bundle` | 强制 ZIP bundle 打包（默认有相对路径资源时自动走此模式） |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） |
-| `--profile` | 凭证 profile（多账号时指定，如 myorg） |
+| `--profile` | 账号 profile，对应 `config/<名字>/` 目录（如 myorg → `config/myorg/config.json`） |
 | `--config-file` | 配置文件路径（兼容旧参数名 `--credential-file`） |
 | `--dry-run` | 只检测打包不上传 |
 | `--force` | 强制重新上传，忽略 manifest 幂等检查 |

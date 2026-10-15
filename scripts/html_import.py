@@ -18,10 +18,12 @@ HTML bundle (not a regular zip file), so relative-path resources inside are
 resolved against index.html at the archive root.
 
 Config lives in the skill directory: config/<profile>/config.json (default
-profile: config/default/config.json). Required fields: mcp_token + company_from
-(https://lexiangla.com/ai/claw); optional: mcp_base_url, credential_help_url,
-target_space_id, target_entry_id. Legacy locations (config/credentials.json,
-config/profiles/<name>.json, ~/.config/lexiang-upload/) are honored as fallbacks.
+profile: config/default/config.json). Required fields: mcp_token and
+company_from (https://lexiangla.com/ai/claw) plus target_space_id (the
+destination knowledge base); optional: mcp_base_url, credential_help_url,
+target_entry_id (defaults to the knowledge base root). Legacy locations
+(config/credentials.json, config/profiles/<name>.json,
+~/.config/lexiang-upload/) are honored as fallbacks.
 """
 from __future__ import annotations
 
@@ -44,7 +46,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 CLI_API = "1"
 # 公有云默认 endpoint。私有化环境在凭证文件里配置 mcp_base_url /
 # credential_help_url 覆盖（endpoint 跟凭证走：私有化 token 与私有化
@@ -98,8 +100,9 @@ class PersonalCredential:
     # 可选：私有化环境覆盖公有云默认 endpoint（见 DEFAULT_* 常量注释）
     mcp_base_url: str = ""
     credential_help_url: str = ""
-    # 目的端配置（可选）：target_entry_id 优先；仅 target_space_id 时自动
-    # 解析知识库根目录；target_url 为 legacy 写法（完整 URL 或裸 entry_id）
+    # 目的端配置：target_space_id 必填（目标知识库 ID）；target_entry_id
+    # 可选，不填 = 上传到该知识库根目录；target_url 为 legacy 写法
+    # （完整 URL 或裸 entry_id），存在时同样视为目的端已配置
     target_space_id: str = ""
     target_entry_id: str = ""
     target_url: str = ""
@@ -165,11 +168,20 @@ class PersonalCredential:
             for label, value in (
                 ("mcp_token", self.mcp_token),
                 ("company_from", self.company_from),
+                ("target_space_id", self.target_space_id),
             )
             if not value
         ]
+        # 目的端已有明确配置（target_entry_id / legacy target_url）时，
+        # 豁免 target_space_id（知识库已隐含确定，兼容旧配置文件）
+        if "target_space_id" in missing and (self.target_entry_id or self.target_url):
+            missing.remove("target_space_id")
         if missing:
-            raise AuthError(f"凭证缺少字段：{', '.join(missing)}")
+            raise AuthError(
+                f"配置缺少必填字段：{', '.join(missing)}"
+                "（target_space_id = 目标知识库 ID；target_entry_id 可选，"
+                "不填默认上传到该知识库根目录）"
+            )
 
 
 def resolve_config_file(profile: str | None, config_file: str | None) -> Path:
@@ -932,7 +944,8 @@ def resolve_target_from_config(
     """从配置文件解析默认目标目录。
 
     优先级：target_entry_id > target_url（legacy，完整 URL 或裸 entry_id）
-    > target_space_id（解析知识库根目录）。返回空串表示未配置。
+    > target_space_id（target_entry_id 未填时，上传到该知识库根目录）。
+    返回空串表示未配置。
     """
     entry = (cred.target_entry_id or "").strip()
     if entry:
@@ -1158,8 +1171,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "错误：需要 --parent-entry-id / --target-url（新建）、"
             "--entry-id（原地更新已有条目），"
-            "或在配置文件配置 target_entry_id / target_space_id "
-            "作为默认目标",
+            "或在配置文件配置目的端（target_space_id 必填 = 目标知识库；"
+            "target_entry_id 可选，不填默认上传到该知识库根目录）",
             file=sys.stderr,
         )
         return 2

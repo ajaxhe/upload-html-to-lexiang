@@ -41,22 +41,26 @@ cd upload-html-to-lexiang
 
 ### 2. 配置文件（一次性，5 分钟）
 
-工具通过乐享 MCP 接口上传文件。所有配置放在一个 JSON 文件里：`config/<账号>/config.json`（默认账号目录 `config/default/`），包含**凭证、接口地址、默认上传目标**三类信息——凭证必填两项，其余全部可选。整个配置只需做一次。
+工具通过乐享 MCP 接口上传文件。所有配置放在一个 JSON 文件里：`config/<账号>/config.json`（默认账号目录 `config/default/`），包含**凭证、接口地址、默认上传目标**三类信息——必填三项，其余可选。整个配置只需做一次。
 
 #### 第 1 步：打开凭证页面
 
 浏览器访问 <https://lexiangla.com/ai/claw>，用你的企业账号登录（需要所在企业已开通乐享）。
 
-#### 第 2 步：复制两个值
+#### 第 2 步：复制两个凭证值
 
-在页面上获取以下两个值（**仅这两项必填**）：
+在页面上获取以下两个值：
 
 | 值 | 长什么样 | 说明 |
 |----|---------|------|
 | `mcp_token` | `lxmcp_` 开头的一长串字符 | 接口访问令牌，**相当于密码，不要泄露给他人** |
 | `company_from` | 一个短字符串（如 `mycompany`） | 你的企业标识，用来路由到正确的企业 |
 
-#### 第 3 步：写入配置文件
+#### 第 3 步：找到目标知识库的 Space ID
+
+打开乐享网页版，进入你要上传到的**知识库**，浏览器地址栏 `/spaces/` 后面的一串字母数字就是 space_id（如 `https://xxx.lexiangla.com/spaces/50f32b...` → space_id 为 `50f32b...`）。个人知识库同样适用。
+
+#### 第 4 步：写入配置文件
 
 复制模板到默认账号目录 `config/default/config.json`，再填入真实值（在本仓库根目录执行）：
 
@@ -71,10 +75,10 @@ chmod 600 config/default/config.json
 {
   "mcp_token": "lxmcp_替换成你的token",
   "company_from": "替换成你的企业标识",
+  "target_space_id": "必填：目标知识库ID",
   "mcp_base_url": "https://mcp.lexiang-app.com/mcp?preset=all",
   "credential_help_url": "https://lexiangla.com/ai/claw",
-  "target_space_id": "可选：目标知识库ID（用不到本行就整行删除）",
-  "target_entry_id": "可选：目标目录entry_id（用不到本行就整行删除）"
+  "target_entry_id": "可选：目标目录entry_id（不填默认上传到知识库根目录，本行可删）"
 }
 ```
 
@@ -84,25 +88,28 @@ chmod 600 config/default/config.json
 |------|:---:|------|
 | `mcp_token` | ✅ | 第 2 步获取的 token |
 | `company_from` | ✅ | 第 2 步获取的企业标识 |
+| `target_space_id` | ✅ | **目标知识库 ID**（第 3 步获取）：默认上传到该知识库；`target_entry_id` 未填时上传到该知识库的**根目录** |
+| `target_entry_id` | 否 | **默认上传目录**的 entry_id：固定上传到知识库里的某个子目录时填写，不填 = 根目录；命令行参数优先 |
 | `mcp_base_url` | 否 | MCP 接口地址，**私有化环境必改**（换成自己域名，见下方「私有化环境配置」）；公有云用户保持默认或删掉此行均可 |
 | `credential_help_url` | 否 | 凭证帮助页地址，私有化环境可换成内部说明页；一般不用改 |
-| `target_entry_id` | 否 | **默认上传目录**的 entry_id：固定上传到某个目录时填写，之后连 `--target-url` 都不用传；命令行参数优先 |
-| `target_space_id` | 否 | 目标知识库 ID：`target_entry_id` 没填时会自动解析该知识库的**根目录**作为默认目标 |
 
-**最简配置**：只需要前两行——
+**最简配置**：只需要前三行——
 
 ```json
 {
   "mcp_token": "lxmcp_你的token",
-  "company_from": "你的企业标识"
+  "company_from": "你的企业标识",
+  "target_space_id": "你的目标知识库ID"
 }
 ```
 
-其余可选字段（`mcp_base_url` / `credential_help_url` / `target_space_id` / `target_entry_id`）**用不到就整行删除**，留着模板里的中文占位文字会导致上传报错。
+上传时不用传任何目标参数，默认进该知识库的根目录。
+
+其余可选字段（`mcp_base_url` / `credential_help_url` / `target_entry_id`）**用不到就整行删除**，留着模板里的中文占位文字会导致上传报错。
 
 **新手常见错误**：
 - JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
-- 两个必填值缺一不可，少了会报 `凭证缺少字段：xxx`
+- 三个必填值缺一不可，少了会报 `配置缺少必填字段：xxx`
 - 可选字段用不到就**整行删除**，不要留着"替换成…"的占位文字
 - `chmod 600` 是把文件权限设为仅本人可读，防止凭证被其他用户读取，建议保留
 - 除模板 `config/default/config.example.json` 外，`config/` 下所有账号配置已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
@@ -159,8 +166,9 @@ python3 scripts/html_import.py samples/01-基础富文本结构.html --dry-run -
 
 | 报错信息 | 原因与解决办法 |
 |---------|---------------|
-| `配置文件不存在：...` | 还没做第 3 步，或文件路径/文件名不对 |
-| `凭证缺少字段：mcp_token` | JSON 里少了字段，或引号写成了中文引号 |
+| `配置文件不存在：...` | 还没做第 4 步，或文件路径/文件名不对 |
+| `配置缺少必填字段：mcp_token` | JSON 里少了字段，或引号写成了中文引号 |
+| `配置缺少必填字段：target_space_id` | 少了目标知识库 ID（第 3 步获取），或删多了行 |
 | `乐享凭证无效或已过期（401）` | token 失效了，回到 <https://lexiangla.com/ai/claw> 重新获取并更新配置文件 |
 
 ## 使用
@@ -175,9 +183,17 @@ https://你的企业域名.lexiangla.com/pages/一串字母数字?company_from=�
 
 把这个 URL 原样传给 `--target-url` 即可，工具会自动解析出目标目录。
 
-**固定同步到同一目录？** 把目录的 entry_id 写进配置文件的 `target_entry_id` 字段（见上面字段说明表），之后连 `--target-url` 都不用传；命令行显式指定的目标优先生效。只填 `target_space_id` 时自动用该知识库的根目录。
+**不想每次传目标参数？** 配置文件里的 `target_space_id`（必填）已决定默认上传到哪个知识库——不配 `target_entry_id` 就是该知识库的**根目录**。想固定到某个子目录，把目录的 entry_id 写进 `target_entry_id` 字段；命令行显式指定的目标优先生效。
 
 ### 单个 HTML 文件
+
+配置文件已含 `target_space_id` 时，最简单的用法——默认上传到该知识库根目录（配了 `target_entry_id` 则进那个目录）：
+
+```bash
+python3 scripts/html_import.py report.html
+```
+
+也可以临时指定其他目录（优先级高于配置文件）：
 
 ```bash
 python3 scripts/html_import.py report.html \
@@ -189,9 +205,7 @@ python3 scripts/html_import.py report.html \
 ### 目录下所有 HTML（每个成为独立条目）
 
 ```bash
-python3 scripts/html_import.py ./html-dir \
-  --target-url "https://你的企业域名.lexiangla.com/pages/<目录entry_id>?company_from=你的企业标识" \
-  --profile myorg --json
+python3 scripts/html_import.py ./html-dir --profile myorg --json
 ```
 
 ### 原地更新已有条目（不新建）
@@ -237,8 +251,8 @@ python3 scripts/html_import.py report.html --dry-run --json
 | 参数 | 说明 | 必填 |
 |------|------|:----:|
 | `source` | HTML 文件路径或含 .html 的目录 | 是 |
-| `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 新建时三选一 |
-| `--parent-entry-id` | 目标父节点 entry_id | 新建时三选一 |
+| `--target-url` | 临时指定乐享目标目录页 URL（自动解析 parent_entry_id；不传则用配置文件默认目标） | 否 |
+| `--parent-entry-id` | 临时指定目标父节点 entry_id（不传则用配置文件默认目标） | 否 |
 | `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需 `--parent-entry-id`，不加则每次都新建 | 否 |
 | `--raw` | 强制直传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（默认无资源时自动走此模式） | 否 |
 | `--bundle` | 强制 ZIP bundle 打包（默认有相对路径资源时自动走此模式） | 否 |
@@ -249,7 +263,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--dry-run` | 只检测打包不上传 | 否 |
 | `--json` | stdout 只输出 JSON | 否 |
 
-> **新建条目时目标三选一**：`--target-url` / `--parent-entry-id` / 配置文件 `target_entry_id`（或 `target_space_id`）字段（都不传且无 `--entry-id` 会报错）。优先级：命令行 > 配置文件。
+> **新建条目时的目标**：不传任何目标参数 → 用配置文件默认目标（`target_entry_id` 指定目录，不填 = `target_space_id` 知识库根目录）；命令行 `--target-url` / `--parent-entry-id` 可临时覆盖（优先级：命令行 > 配置文件）。`--entry-id` 原地更新时无需目标目录。
 
 ## ZIP bundle 结构
 

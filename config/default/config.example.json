@@ -1,8 +1,8 @@
 {
   "mcp_token": "lxmcp_替换成你的token",
   "company_from": "替换成你的企业标识",
+  "target_space_id": "必填：目标知识库ID",
   "mcp_base_url": "https://mcp.lexiang-app.com/mcp?preset=all",
   "credential_help_url": "https://lexiangla.com/ai/claw",
-  "target_space_id": "可选：目标知识库ID（用不到本行就整行删除）",
-  "target_entry_id": "可选：目标目录entry_id（用不到本行就整行删除）"
+  "target_entry_id": "可选：目标目录entry_id（不填默认上传到知识库根目录，本行可删）"
 }
