@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 CLI_API = "1"
 CREDENTIAL_HELP_URL = "https://lexiangla.com/ai/claw"
 MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
@@ -652,9 +652,16 @@ def import_one_html(
     manifest: Manifest | None = None,
     force: bool = False,
     entry_id: str | None = None,
-    raw: bool = False,
+    mode: str = "auto",
 ) -> dict:
-    """Package one html (+resources) into a zip bundle and upload to Lexiang.
+    """Upload one html to Lexiang, auto-picking raw vs zip-bundle by dependency.
+
+    Mode selection (2026-10-15, per correct Lexiang semantics):
+      - auto (default): no relative-path resources -> raw (upload the html
+        source file verbatim, previewable); has resources -> zip bundle
+        (extension=html, server-side unpack & conversion).
+      - raw: force verbatim upload; error out if relative resources exist.
+      - bundle: force zip bundling even without resources.
 
     Idempotency (principle 3): if manifest is provided and the source file's
     content_hash matches a previous upload, skip unless force=True.
@@ -662,23 +669,28 @@ def import_one_html(
     entry_id: when set, UPDATE that existing file entry in place instead of
     creating a new one (file_apply_upload scenario 2). Without it a re-upload
     always creates a duplicate entry with the same name.
-
-    raw: skip the ZIP bundle and upload the .html file verbatim. Only valid
-    when the HTML has no relative-path resources; keeps the server-side file
-    shape identical to a plain .html upload (name stays ``<title>.html``).
     """
     source_key = str(html_path.resolve())
     title = name or extract_title(html_path)
+    refs = detect_resources(html_path)
+
+    # resolve effective mode
+    if mode == "raw":
+        if refs:
+            raise MCPError(
+                "--raw 不支持含相对路径资源的 HTML（检测到 "
+                f"{len(refs)} 个：{', '.join(refs[:3])}）；"
+                "请去掉 --raw 改用 zip bundle 方式"
+            )
+        effective = "raw"
+    elif mode == "bundle":
+        effective = "bundle"
+    else:  # auto
+        effective = "bundle" if refs else "raw"
+    raw = effective == "raw"
 
     with tempfile.TemporaryDirectory(prefix="lxhtml_zip_") as tmp:
         if raw:
-            refs = detect_resources(html_path)
-            if refs:
-                raise MCPError(
-                    "--raw 不支持含相对路径资源的 HTML（检测到 "
-                    f"{len(refs)} 个：{', '.join(refs[:3])}）；"
-                    "请去掉 --raw 改用 zip bundle 方式"
-                )
             payload_path = html_path
             content_hash = hashlib.sha256(html_path.read_bytes()).hexdigest()
             upload_name = f"{title}.html"
@@ -692,10 +704,14 @@ def import_one_html(
             bundle = package_html_bundle(html_path, Path(tmp), zip_name=title)
             payload_path = bundle.zip_path
             content_hash = bundle.content_hash
-            # ⚠️ name 必须用 .html 后缀（2026-10 服务端路由调整：按
-            # mime_type + name 后缀 + extension 推断导入任务类型；
-            # .zip 后缀会走普通 zip 导入任务，报 50090009 导入任务失败）
-            upload_name = f"{title}.html"
+            # bundle 的 name 必须用 .zip 后缀 + extension=html：
+            # 服务端据此走 HTML bundle 解包转换管道（解 zip、以 index.html
+            # 为入口转成可预览文档）。
+            # ⚠️ 2026-10-15 实测：.html 后缀名会绕过 bundle 管道、把 zip
+            # 字节原样存成 .html 文件（commit 成功但不可预览）；.zip 后缀
+            # 才是 bundle 正确入口（若 commit 报 50090009「导入任务失败」
+            # 为服务端 bundle 管道故障，非本地参数问题）。
+            upload_name = f"{title}.zip"
             mime_type = "application/zip"
             file_count = bundle.file_count
             index_name = bundle.index_name
@@ -876,8 +892,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--raw",
         action="store_true",
         help=(
-            "不打包 ZIP bundle，直接上传 .html 原文"
-            "（仅适用于无相对路径资源的自包含 HTML）"
+            "强制直传 .html 原文（仅适用于无相对路径资源的自包含 HTML；"
+            "默认自动判断：无资源即直传）"
+        ),
+    )
+    parser.add_argument(
+        "--bundle",
+        action="store_true",
+        help=(
+            "强制 ZIP bundle 打包上传（默认自动判断：有相对路径资源才打包）。"
+            "bundle 服务端解包转换管道故障期间会报 50090009"
         ),
     )
     parser.add_argument("--name", help="导入后的文件标题（默认取 HTML <title>）")
@@ -945,6 +969,12 @@ def main(argv: list[str] | None = None) -> int:
         print("错误：--entry-id 只能与单个 HTML 文件配合使用", file=sys.stderr)
         return 2
 
+    # resolve upload mode: auto (default) / raw (--raw) / bundle (--bundle)
+    if args.raw and args.bundle:
+        print("错误：--raw 与 --bundle 不能同时指定", file=sys.stderr)
+        return 2
+    mode = "raw" if args.raw else ("bundle" if args.bundle else "auto")
+
     # dry run does not need credentials
     if args.dry_run:
         results = []
@@ -953,7 +983,7 @@ def main(argv: list[str] | None = None) -> int:
                 results.append(
                     import_one_html(
                         None, hf, parent_entry_id, args.name, True,
-                        entry_id=args.entry_id, raw=args.raw,
+                        entry_id=args.entry_id, mode=mode,
                     )
                 )
             except (AuthError, MCPError) as error:
@@ -993,13 +1023,13 @@ def main(argv: list[str] | None = None) -> int:
             record = import_one_html(
                 client, hf, parent_entry_id, args.name, args.dry_run,
                 manifest=manifest, force=args.force,
-                entry_id=args.entry_id, raw=args.raw,
+                entry_id=args.entry_id, mode=mode,
             )
             results.append(record)
             eid = record.get("entry_id", "")
             if eid:
                 log(
-                    f"  -> {record['status']}: "
+                    f"  -> {record['status']} [{record.get('mode', '?')}]: "
                     f"entry_id={eid[:16]}, "
                     f"resources={len(record.get('included_resources', []))}/"
                     f"{len(record.get('included_resources', [])) + len(record.get('degraded_resources', []))}"

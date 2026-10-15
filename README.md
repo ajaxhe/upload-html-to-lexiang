@@ -120,7 +120,8 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--target-url` | 乐享目标目录页 URL（自动解析 parent_entry_id） | 新建时二选一 |
 | `--parent-entry-id` | 目标父节点 entry_id | 新建时二选一 |
 | `--entry-id` | **原地更新**已有的 `file` 类型条目（entry_id 取自 `/pages/<id>`）；指定后无需 `--parent-entry-id`，不加则每次都新建 | 否 |
-| `--raw` | 不打包 ZIP bundle，直接上传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（有 `<img src>` 等相对引用会直接报错） | 否 |
+| `--raw` | 强制直传 `.html` 原文；仅适用于**无相对路径资源**的自包含 HTML（默认无资源时自动走此模式） | 否 |
+| `--bundle` | 强制 ZIP bundle 打包（默认有相对路径资源时自动走此模式） | 否 |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） | 否 |
 | `--profile` | 凭证 profile（多账号时指定，如 myorg） | 否 |
 | `--credential-file` | 凭证文件路径 | 否 |
@@ -142,9 +143,11 @@ report.zip
 
 乐享服务端识别 `extension=html` 后，以 `index.html` 为入口解析 bundle，相对路径资源按原始路径匹配。
 
-> ⚠️ 2026-10 服务端路由调整：上传名（`file_apply_upload` 的 `name`）必须用 `.html` 后缀（本工具已内置）。服务端按 `mime_type + name 后缀 + extension` 推断导入任务类型，`.zip` 后缀会走普通 zip 导入任务并报 50090009「导入任务失败」。
+> **上传模式自动判断（默认）**：无本地相对路径资源 → 直传 HTML 源文件（`name=<标题>.html` + `mime_type=text/html`），可直接预览；有相对路径资源 → ZIP bundle 打包（`name=<标题>.zip` + `mime_type=application/zip` + `extension=html`），服务端解包转换后预览。`--raw` / `--bundle` 可强制覆盖。
 >
-> 同时 MCP 网关要求 URL 带 `preset=all` 参数才返回全量业务工具（本工具已内置）。
+> ⚠️ 2026-10-15 实测：服务端 HTML bundle 解包管道故障（`name=.zip + extension=html` 在 commit 阶段报 `50090009 导入任务失败`）。**不要用 `.html` 名绕过**——那会把 zip 字节原样存成 `.html` 文件，commit 成功但预览必坏。临时替代：小资源可转 data URI 内联后走 raw 直传。
+>
+> MCP 网关要求 URL 带 `preset=all` 参数才返回全量业务工具（本工具已内置）。
 
 ## 资源检测范围
 
