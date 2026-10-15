@@ -24,7 +24,7 @@ description: >-
 ## 硬性规则
 
 1. 只使用从 <https://lexiangla.com/ai/claw> 获取的个人凭证（`lxmcp_` 前缀 MCP API Token）。
-2. 凭证文件格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}`，**默认保存在本 skill 目录下 `config/credentials.json`**，权限 0600（legacy 路径 `~/.config/lexiang-upload/` 仍自动回退兼容）。可选字段 `mcp_base_url`：私有化环境的 MCP 接口地址（endpoint 跟凭证走，不硬编码代码里；不配 = 公有云 `https://mcp.lexiang-app.com/mcp`）。`mcp_base_url` 可自带 query 参数（如 `?preset=all`），拼接时保留已配参数并自动确保 `preset=all` 与 `company_from` 存在。命令行 `--mcp-base-url` 可临时覆盖（优先级：CLI > 凭证文件 > 默认）。
+2. 配置文件（凭证 + 端点 + 目的端，每账号一个子目录）：**默认 `config/default/config.json`**，多账号 `config/<profile>/config.json`（`--profile <name>` 指定），权限 0600。格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}` + 可选字段：`mcp_base_url`（私有化 MCP 接口地址，endpoint 跟凭证走不硬编码；不配 = 公有云 `https://mcp.lexiang-app.com/mcp`；可自带 query 参数如 `?preset=all`，拼接时保留已配参数并自动确保 `preset=all` 与 `company_from` 存在）、`credential_help_url`、`target_entry_id`（默认目标目录，CLI 优先）、`target_space_id`（无 entry_id 时自动解析知识库根目录）。legacy 自动回退：`config/credentials.json`、`config/profiles/<name>.json`、`~/.config/lexiang-upload/` 同名结构。命令行 `--mcp-base-url` 可临时覆盖（优先级：CLI > 配置文件 > 默认）。
 3. **上传模式自动判断（默认 auto，2026-10-15 起）**：先检测 HTML 是否引用本地相对路径资源——**无依赖 → raw 直传 HTML 源文件**（`mime_type=text/html`、`name=<标题>.html`，可直接预览）；**有依赖 → ZIP bundle 打包**（主文件改名 `index.html` + 资源保持相对路径，`extension=html` 标记，服务端解包转换）。`--raw` / `--bundle` 可强制覆盖。
 4. bundle 必须传 `extension=html`（区分普通 zip 和 HTML bundle）。
 5. `file_apply_upload` 的 `name` 参数用原文档标题（取自 HTML `<title>` 或 `--name`）：raw 模式后缀 `.html`；**bundle 模式后缀必须是 `.zip`**（`<标题>.zip`）——`.zip` 名 + `extension=html` 才会走服务端 HTML bundle 解包转换管道。
@@ -100,25 +100,25 @@ bundle 模式（有相对路径依赖，自动选择）：
 
 ## 凭证配置
 
-配置默认放在 **本 skill 目录下**（`config/`），方便查看和调用；`~/.config/lexiang-upload/` 作为 legacy 回退路径仍可用。
+配置默认放在 **本 skill 目录下**（`config/`），每账号一个子目录；`~/.config/lexiang-upload/` 等旧路径自动回退。
 
 1. 访问 <https://lexiangla.com/ai/claw> 获取个人凭证（`lxmcp_` 前缀 token + `company_from`）
-2. 写入凭证文件（skill 目录按实际路径替换）：
+2. 复制模板到账号目录并填值（skill 目录按实际路径替换；默认账号为 `default`）：
 
 ```bash
-mkdir -p <skill-dir>/config && cat > <skill-dir>/config/credentials.json << 'EOF'
-{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
-EOF
-chmod 600 <skill-dir>/config/credentials.json
+mkdir -p <skill-dir>/config/default
+cp <skill-dir>/config/config.example.json <skill-dir>/config/default/config.json
+# 编辑 config/default/config.json 替换 mcp_token / company_from
+chmod 600 <skill-dir>/config/default/config.json
 ```
 
-多账号用命名 profile：
+多账号用命名 profile（目录名 = profile 名）：
 
 ```bash
-mkdir -p <skill-dir>/config/profiles && cat > <skill-dir>/config/profiles/myorg.json << 'EOF'
-{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
-EOF
-chmod 600 <skill-dir>/config/profiles/myorg.json
+mkdir -p <skill-dir>/config/myorg
+cp <skill-dir>/config/config.example.json <skill-dir>/config/myorg/config.json
+# 编辑 config/myorg/config.json 填入该账号的值
+chmod 600 <skill-dir>/config/myorg/config.json
 ```
 
 > AI agent 可在用户提供凭证后自动执行上述命令完成配置，无需用户手动操作。
@@ -179,7 +179,7 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--bundle` | 强制 ZIP bundle 打包（默认有相对路径资源时自动走此模式） |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） |
 | `--profile` | 凭证 profile（多账号时指定，如 myorg） |
-| `--credential-file` | 凭证文件路径 |
+| `--config-file` | 配置文件路径（兼容旧参数名 `--credential-file`） |
 | `--dry-run` | 只检测打包不上传 |
 | `--force` | 强制重新上传，忽略 manifest 幂等检查 |
 | `--no-incremental` | 禁用 manifest（每次全量上传，不记状态） |

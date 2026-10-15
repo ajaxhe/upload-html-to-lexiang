@@ -10,7 +10,7 @@ venv/
 out/
 output/
 
-# 凭证与上传状态（含 token / entry_id，严禁入库）；模板文件除外
+# 配置与上传状态（含 token / entry_id，严禁入库）；模板文件除外
 config/*
-!config/credentials.example.json
+!config/config.example.json
 manifests/

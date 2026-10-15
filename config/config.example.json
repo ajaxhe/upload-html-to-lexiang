@@ -3,5 +3,6 @@
   "company_from": "替换成你的企业标识",
   "mcp_base_url": "https://mcp.lexiang-app.com/mcp?preset=all",
   "credential_help_url": "https://lexiangla.com/ai/claw",
-  "target_url": "https://lexiangla.com/pages/替换成目标目录entry_id"
+  "target_space_id": "替换成目标知识库ID（与 target_entry_id 至少填一个）",
+  "target_entry_id": "替换成目标目录entry_id"
 }

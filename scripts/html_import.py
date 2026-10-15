@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 CLI_API = "1"
 # 公有云默认 endpoint。私有化环境在凭证文件里配置 mcp_base_url /
 # credential_help_url 覆盖（endpoint 跟凭证走：私有化 token 与私有化
@@ -53,20 +53,25 @@ DEFAULT_MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
 # 脚本在打包后本地预检拦截，给出明确报错而非服务端错误码。
 MAX_BUNDLE_ZIP_BYTES = 20 * 1024 * 1024
 
-# 配置默认放在 skill 目录下（方便查看和调用）：
-#   <skill>/config/credentials.json          默认凭证
-#   <skill>/config/profiles/<name>.json       命名 profile 凭证
-#   <skill>/manifests/html-import.json        上传状态 manifest
-# legacy 路径（~/.config/lexiang-upload/）作为回退：新路径不存在时自动使用旧路径，
-# 老用户升级后无需迁移即可继续使用。
+# 配置默认放在 skill 目录下（方便查看和调用），每个账号一个子目录：
+#   <skill>/config/default/config.json     默认账号（凭证 + 端点 + 目的端）
+#   <skill>/config/<profile>/config.json   命名 profile（--profile <name>）
+#   <skill>/manifests/html-import.json     上传状态 manifest
+# legacy 自动回退（老用户无需迁移，命中即用，新路径优先）：
+#   config/credentials.json、config/profiles/<name>.json（旧版单文件结构）、
+#   ~/.config/lexiang-upload/ 同名结构（更早版本）
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 CONFIG_DIR = SKILL_DIR / "config"
 LEGACY_CONFIG_DIR = Path("~/.config/lexiang-upload").expanduser()
-DEFAULT_CREDENTIALS = CONFIG_DIR / "credentials.json"
-LEGACY_CREDENTIALS = LEGACY_CONFIG_DIR / "credentials.json"
-PROFILE_CREDENTIALS_DIR = CONFIG_DIR / "profiles"
-LEGACY_PROFILE_CREDENTIALS_DIR = LEGACY_CONFIG_DIR / "profiles"
+# 新结构：config/<profile>/config.json（default = 默认账号）
+DEFAULT_CONFIG_FILE = CONFIG_DIR / "default" / "config.json"
+PROFILE_CONFIG_DIR = CONFIG_DIR
+# legacy 回退路径
+LEGACY_DEFAULT_CONFIG_FILE = CONFIG_DIR / "credentials.json"
+LEGACY_PROFILE_CONFIG_DIR = CONFIG_DIR / "profiles"
+LEGACY2_DEFAULT_CONFIG_FILE = LEGACY_CONFIG_DIR / "credentials.json"
+LEGACY2_PROFILE_CONFIG_DIR = LEGACY_CONFIG_DIR / "profiles"
 MANIFEST_PATH = SKILL_DIR / "manifests" / "html-import.json"
 LEGACY_MANIFEST_PATH = LEGACY_CONFIG_DIR / "manifests" / "html-import.json"
 PROFILE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -90,7 +95,10 @@ class PersonalCredential:
     # 可选：私有化环境覆盖公有云默认 endpoint（见 DEFAULT_* 常量注释）
     mcp_base_url: str = ""
     credential_help_url: str = ""
-    # 可选：默认目标目录（支持完整 URL 或裸 entry_id），CLI 参数优先
+    # 目的端配置（可选）：target_entry_id 优先；仅 target_space_id 时自动
+    # 解析知识库根目录；target_url 为 legacy 写法（完整 URL 或裸 entry_id）
+    target_space_id: str = ""
+    target_entry_id: str = ""
     target_url: str = ""
 
     @classmethod
@@ -114,6 +122,8 @@ class PersonalCredential:
             company_from=pick("company_from", "mcp_company_from"),
             mcp_base_url=pick("mcp_base_url", "mcp_url", "mcp_endpoint"),
             credential_help_url=pick("credential_help_url", "credential_url"),
+            target_space_id=pick("target_space_id", "space_id"),
+            target_entry_id=pick("target_entry_id", "parent_entry_id"),
             target_url=pick("target_url", "default_target_url"),
         )
 
@@ -159,42 +169,53 @@ class PersonalCredential:
             raise AuthError(f"凭证缺少字段：{', '.join(missing)}")
 
 
-def resolve_credential_file(profile: str | None, credential_file: str | None) -> Path:
-    """Resolve credential path: explicit --credential-file > skill-dir config > legacy."""
-    if credential_file:
-        return Path(credential_file).expanduser()
+def resolve_config_file(profile: str | None, config_file: str | None) -> Path:
+    """Resolve config path: --config-file > config/<profile>/config.json > legacy."""
+    if config_file:
+        return Path(config_file).expanduser()
     if profile:
         if not PROFILE_RE.match(profile):
             raise AuthError(f"profile 名非法：{profile}")
-        primary = PROFILE_CREDENTIALS_DIR / f"{profile}.json"
-        if primary.exists():
-            return primary
-        legacy = LEGACY_PROFILE_CREDENTIALS_DIR / f"{profile}.json"
-        if legacy.exists():
-            return legacy
-        return primary
-    if DEFAULT_CREDENTIALS.exists():
-        return DEFAULT_CREDENTIALS
-    if LEGACY_CREDENTIALS.exists():
-        return LEGACY_CREDENTIALS
-    return DEFAULT_CREDENTIALS
+        candidates = [
+            PROFILE_CONFIG_DIR / profile / "config.json",
+            LEGACY_PROFILE_CONFIG_DIR / f"{profile}.json",
+            LEGACY2_PROFILE_CONFIG_DIR / f"{profile}.json",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+    candidates = [
+        DEFAULT_CONFIG_FILE,
+        LEGACY_DEFAULT_CONFIG_FILE,
+        LEGACY2_DEFAULT_CONFIG_FILE,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
-def load_credential(profile: str | None, credential_file: str | None) -> PersonalCredential:
-    path = resolve_credential_file(profile, credential_file)
+# 兼容别名（老代码 / debug 脚本引用）
+resolve_credential_file = resolve_config_file
+
+
+def load_credential(profile: str | None, config_file: str | None) -> PersonalCredential:
+    path = resolve_config_file(profile, config_file)
     if not path.exists():
+        default_cfg = CONFIG_DIR / "default" / "config.json"
         raise AuthError(
-            f"凭证文件不存在：{path}\n"
+            f"配置文件不存在：{path}\n"
             f"请访问 {DEFAULT_CREDENTIAL_HELP_URL} 获取凭证"
             f"（私有化环境请咨询管理员获取本环境的凭证与接口地址），"
-            f"然后复制模板修改（配置默认放在 skill 目录下）：\n"
-            f"  cp {CONFIG_DIR / 'credentials.example.json'} "
-            f"{CONFIG_DIR / 'credentials.json'}\n"
-            f"  编辑 {CONFIG_DIR / 'credentials.json'}，"
-            f"替换 mcp_token / company_from"
+            f"然后复制模板到账号目录（默认账号为 default）：\n"
+            f"  mkdir -p {CONFIG_DIR / 'default'} && "
+            f"cp {CONFIG_DIR / 'config.example.json'} {default_cfg}\n"
+            f"  编辑 {default_cfg}，替换 mcp_token / company_from"
             f"（私有化环境同时替换 mcp_base_url 为自己的域名）\n"
-            f"  chmod 600 {CONFIG_DIR / 'credentials.json'}\n"
-            f"多账号：凭证放到 {PROFILE_CREDENTIALS_DIR}/<name>.json，用 --profile <name> 指定"
+            f"  chmod 600 {default_cfg}\n"
+            f"多账号：配置放 {PROFILE_CONFIG_DIR}/<name>/config.json，"
+            f"用 --profile <name> 指定"
         )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -903,6 +924,43 @@ def parse_lexiang_url(url: str) -> str:
     return ""
 
 
+def resolve_target_from_config(
+    client: "MCPClient | None", cred: PersonalCredential, log
+) -> str:
+    """从配置文件解析默认目标目录。
+
+    优先级：target_entry_id > target_url（legacy，完整 URL 或裸 entry_id）
+    > target_space_id（解析知识库根目录）。返回空串表示未配置。
+    """
+    entry = (cred.target_entry_id or "").strip()
+    if entry:
+        log(f"目标目录来自配置 target_entry_id: {entry}")
+        return entry
+    legacy = (cred.target_url or "").strip()
+    if legacy:
+        if re.fullmatch(r"[0-9a-fA-F]{32}", legacy):
+            log(f"目标目录来自配置 target_url: {legacy}")
+            return legacy
+        parsed = parse_lexiang_url(legacy)
+        if parsed:
+            log(f"目标目录来自配置 target_url: {parsed}")
+            return parsed
+    space = (cred.target_space_id or "").strip()
+    if space and client is not None:
+        try:
+            result = client.json("space_describe_space", {"space_id": space})
+            root = (result.get("data", {}).get("space", {}) or {}).get(
+                "root_entry_id", ""
+            )
+            if root:
+                log(f"目标为知识库根目录（target_space_id={space}）: {root}")
+                return root
+            log(f"警告：target_space_id={space} 未返回 root_entry_id，忽略")
+        except (AuthError, MCPError, KeyError, ValueError) as error:
+            log(f"警告：target_space_id={space} 解析失败（{error}），忽略")
+    return ""
+
+
 def _summarize(results: list[dict]) -> dict:
     """Build a three-state summary: succeed / degraded / failed (principle 2)."""
     succeed = [r for r in results if r.get("status") in ("succeed", "ok")]
@@ -977,7 +1035,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--name", help="导入后的文件标题（默认取 HTML <title>）")
     parser.add_argument("--profile", help="凭证 profile（多账号时指定，如 myorg）")
-    parser.add_argument("--credential-file", help="凭证文件路径")
+    parser.add_argument(
+        "--config-file", "--credential-file", dest="config_file",
+        help="配置文件路径（默认按 profile 查找 config/<profile>/config.json）",
+    )
     parser.add_argument(
         "--mcp-base-url",
         help=(
@@ -1068,43 +1129,38 @@ def main(argv: list[str] | None = None) -> int:
 
     # load credential + init MCP
     try:
-        cred = load_credential(args.profile, args.credential_file)
+        cred = load_credential(args.profile, args.config_file)
     except AuthError as error:
-        print(f"凭证错误：{error}", file=sys.stderr)
+        print(f"配置错误：{error}", file=sys.stderr)
         return 3
     if args.mcp_base_url:
         cred.mcp_base_url = args.mcp_base_url
     log(
-        f"使用凭证 profile={args.profile or 'default'}, "
+        f"使用配置 profile={args.profile or 'default'}, "
         f"company_from={cred.company_from}, "
         f"mcp_base_url={cred.resolved_mcp_base_url}"
     )
-
-    # 凭证文件 target_url 字段兜底：CLI 未指定目标时使用（支持完整
-    # URL 或 32 位裸 entry_id）；--entry-id 原地更新时无需目标目录
-    if not parent_entry_id and not args.entry_id and cred.target_url:
-        fallback = cred.target_url.strip()
-        if re.fullmatch(r"[0-9a-fA-F]{32}", fallback):
-            parent_entry_id = fallback
-        else:
-            parent_entry_id = parse_lexiang_url(fallback)
-        if parent_entry_id:
-            log(f"目标目录来自凭证文件 target_url: {parent_entry_id}")
-
-    if not parent_entry_id and not args.entry_id:
-        print(
-            "错误：需要 --parent-entry-id / --target-url（新建）、"
-            "--entry-id（原地更新已有条目），"
-            "或在凭证文件配置 target_url 字段作为默认目标目录",
-            file=sys.stderr,
-        )
-        return 2
 
     try:
         client = MCPClient(cred)
     except (AuthError, MCPError) as error:
         print(f"MCP 初始化失败：{error}", file=sys.stderr)
         return 3
+
+    # 配置文件目的端兜底：CLI 优先；--entry-id 原地更新时无需目标目录。
+    # 优先级：target_entry_id > target_url（legacy）> target_space_id 根目录
+    if not parent_entry_id and not args.entry_id:
+        parent_entry_id = resolve_target_from_config(client, cred, log)
+
+    if not parent_entry_id and not args.entry_id:
+        print(
+            "错误：需要 --parent-entry-id / --target-url（新建）、"
+            "--entry-id（原地更新已有条目），"
+            "或在配置文件配置 target_entry_id / target_space_id "
+            "作为默认目标",
+            file=sys.stderr,
+        )
+        return 2
 
     # init manifest for idempotency (principle 3)
     manifest = None

@@ -57,21 +57,24 @@ cd upload-html-to-lexiang
 
 #### 第 3 步：写入配置文件
 
-仓库自带配置模板 `config/credentials.example.json`，复制一份命名为 `credentials.json` 再填入真实值即可（在本仓库根目录执行）：
+每个账号一个子目录，默认账号放在 `config/default/`。复制模板到默认账号目录，再填入真实值（在本仓库根目录执行）：
 
 ```bash
-cp config/credentials.example.json config/credentials.json
-chmod 600 config/credentials.json
+mkdir -p config/default
+cp config/config.example.json config/default/config.json
+chmod 600 config/default/config.json
 ```
 
-然后打开 `config/credentials.json`，把两个值替换成第 2 步复制的真实值：
+然后打开 `config/default/config.json`，替换其中的值：
 
 ```json
 {
   "mcp_token": "lxmcp_替换成你的token",
   "company_from": "替换成你的企业标识",
   "mcp_base_url": "https://mcp.lexiang-app.com/mcp?preset=all",
-  "credential_help_url": "https://lexiangla.com/ai/claw"
+  "credential_help_url": "https://lexiangla.com/ai/claw",
+  "target_space_id": "替换成目标知识库ID（与 target_entry_id 至少填一个）",
+  "target_entry_id": "替换成目标目录entry_id"
 }
 ```
 
@@ -83,34 +86,31 @@ chmod 600 config/credentials.json
 | `company_from` | ✅ | 第 2 步获取的企业标识 |
 | `mcp_base_url` | 否 | MCP 接口地址，**私有化环境必改**（换成自己域名，见下方「私有化环境配置」）；公有云用户保持默认或删掉此字段均可 |
 | `credential_help_url` | 否 | 凭证帮助页地址，私有化环境可换成内部说明页；一般不用改 |
-| `target_url` | 否 | **默认目标目录**（固定同步到某个目录时配置，省去每次传 `--target-url`）；填乐享目录页 URL 或 32 位 entry_id 均可；命令行参数优先于此字段 |
+| `target_entry_id` | 否 | **默认目标目录**的 entry_id（固定同步到某个目录时配置，省去每次传 `--target-url`）；命令行参数优先 |
+| `target_space_id` | 否 | 目标知识库 ID；`target_entry_id` 没填时会自动解析该知识库的**根目录**作为目标 |
 
 **新手常见错误**：
 - JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
 - 两个必填值缺一不可，少了会报 `凭证缺少字段：xxx`
 - `chmod 600` 是把文件权限设为仅本人可读，防止凭证被其他用户读取，建议保留
-- `config/` 目录（模板 `credentials.example.json` 除外）已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
+- `config/` 目录（模板 `config.example.json` 除外）已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
 
 #### 多账号配置（可选）
 
-只有一个账号时，用上面的 `config/credentials.json` 即可（默认）。如果你有**多个企业**的凭证，用命名 profile 区分：
+每个账号一个子目录（目录名 = profile 名）。默认账号用 `config/default/`，其他账号例如 `myorg`：
 
 ```bash
-mkdir -p config/profiles
-cat > config/profiles/myorg.json << 'EOF'
-{
-  "mcp_token": "lxmcp_替换成token",
-  "company_from": "替换成企业标识"
-}
-EOF
-chmod 600 config/profiles/myorg.json
+mkdir -p config/myorg
+cp config/config.example.json config/myorg/config.json
+chmod 600 config/myorg/config.json
+# 然后编辑 config/myorg/config.json 填入该账号的值
 ```
 
-使用时加 `--profile myorg` 指定；不加 `--profile` 时始终读默认的 `config/credentials.json`。
+使用时加 `--profile myorg` 指定；不加 `--profile` 时读 `config/default/config.json`。
 
 #### 私有化环境配置（可选）
 
-脚本默认连公有云（`https://mcp.lexiang-app.com/mcp`）。在**乐享私有化环境**运行时，把凭证文件里的 `mcp_base_url` 字段换成私有化 MCP 接口地址（向私有化环境管理员获取）——直接改 `config/credentials.json`（由 `credentials.example.json` 复制而来）里的对应字段即可：
+脚本默认连公有云（`https://mcp.lexiang-app.com/mcp`）。在**乐享私有化环境**运行时，把配置文件里的 `mcp_base_url` 字段换成私有化 MCP 接口地址（向私有化环境管理员获取）——直接改账号目录下的 `config.json` 对应字段即可：
 
 ```json
 {
@@ -123,16 +123,17 @@ chmod 600 config/profiles/myorg.json
 说明：
 - `mcp_base_url` 可自带 query 参数（如 `?preset=all`），拼接时会**保留已配参数**，并自动确保 `preset=all` 与 `company_from` 两个参数始终存在（不重复追加）
 - 不写 `mcp_base_url` 字段 = 连公有云
-- 临时调试也可用命令行 `--mcp-base-url` 覆盖（优先级：命令行 > 凭证文件 > 公有云默认）
+- 临时调试也可用命令行 `--mcp-base-url` 覆盖（优先级：命令行 > 配置文件 > 公有云默认）
 
 #### 配置文件放在哪里？（优先级从高到低）
 
 | 位置 | 何时读取 |
 |------|---------|
-| `--credential-file <路径>` | 命令行显式指定时 |
-| `config/profiles/<名字>.json` | 指定 `--profile <名字>` 时 |
-| `config/credentials.json` | 默认 |
-| `~/.config/lexiang-upload/` 同名结构 | 上面都不存在时的兼容回退（老版本路径） |
+| `--config-file <路径>` | 命令行显式指定时 |
+| `config/<profile名>/config.json` | 指定 `--profile <名字>` 时（目录名 = profile 名） |
+| `config/default/config.json` | 默认（不加 `--profile`） |
+| `config/credentials.json`、`config/profiles/<名字>.json` | 兼容回退（v0.7 及更早的单文件结构） |
+| `~/.config/lexiang-upload/` 同名结构 | 兼容回退（更早版本路径） |
 
 #### 如何验证配置是否成功？
 
@@ -146,7 +147,7 @@ python3 scripts/html_import.py samples/01-基础富文本结构.html --dry-run -
 
 | 报错信息 | 原因与解决办法 |
 |---------|---------------|
-| `凭证文件不存在：...` | 还没做第 3 步，或文件路径/文件名不对 |
+| `配置文件不存在：...` | 还没做第 3 步，或文件路径/文件名不对 |
 | `凭证缺少字段：mcp_token` | JSON 里少了字段，或引号写成了中文引号 |
 | `乐享凭证无效或已过期（401）` | token 失效了，回到 <https://lexiangla.com/ai/claw> 重新获取并更新配置文件 |
 
@@ -162,7 +163,7 @@ https://你的企业域名.lexiangla.com/pages/一串字母数字?company_from=�
 
 把这个 URL 原样传给 `--target-url` 即可，工具会自动解析出目标目录。
 
-**固定同步到同一目录？** 把这个 URL 写进凭证文件的 `target_url` 字段（见上面字段说明表），之后连 `--target-url` 都不用传；命令行显式指定的目标优先生效。
+**固定同步到同一目录？** 把目录的 entry_id 写进配置文件的 `target_entry_id` 字段（见上面字段说明表），之后连 `--target-url` 都不用传；命令行显式指定的目标优先生效。只填 `target_space_id` 时自动用该知识库的根目录。
 
 ### 单个 HTML 文件
 
@@ -231,12 +232,12 @@ python3 scripts/html_import.py report.html --dry-run --json
 | `--bundle` | 强制 ZIP bundle 打包（默认有相对路径资源时自动走此模式） | 否 |
 | `--name` | 导入后的条目名（默认取 HTML `<title>`） | 否 |
 | `--profile` | 凭证 profile（多账号时指定，如 myorg） | 否 |
-| `--credential-file` | 凭证文件路径 | 否 |
-| `--mcp-base-url` | MCP 接口地址（私有化环境；优先级：本参数 > 凭证文件 `mcp_base_url` > 公有云默认） | 否 |
+| `--config-file` | 配置文件路径（兼容旧参数名 `--credential-file`） | 否 |
+| `--mcp-base-url` | MCP 接口地址（私有化环境；优先级：本参数 > 配置文件 `mcp_base_url` > 公有云默认） | 否 |
 | `--dry-run` | 只检测打包不上传 | 否 |
 | `--json` | stdout 只输出 JSON | 否 |
 
-> **新建条目时目标三选一**：`--target-url` / `--parent-entry-id` / 凭证文件 `target_url` 字段（都不传且无 `--entry-id` 会报错）。优先级：命令行 > 凭证文件。
+> **新建条目时目标三选一**：`--target-url` / `--parent-entry-id` / 配置文件 `target_entry_id`（或 `target_space_id`）字段（都不传且无 `--entry-id` 会报错）。优先级：命令行 > 配置文件。
 
 ## ZIP bundle 结构
 
