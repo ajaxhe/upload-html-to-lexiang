@@ -57,24 +57,38 @@ cd upload-html-to-lexiang
 
 #### 第 3 步：写入配置文件
 
-在本仓库根目录下执行（把两个值替换成第 2 步复制的真实值）：
+仓库自带配置模板 `config/config.example.json`，复制一份再填入真实值即可（在本仓库根目录执行）：
 
 ```bash
-mkdir -p config
-cat > config/credentials.json << 'EOF'
-{
-  "mcp_token": "lxmcp_替换成你的token",
-  "company_from": "替换成你的企业标识"
-}
-EOF
+cp config/config.example.json config/credentials.json
 chmod 600 config/credentials.json
 ```
 
+然后打开 `config/credentials.json`，把两个值替换成第 2 步复制的真实值：
+
+```json
+{
+  "mcp_token": "lxmcp_替换成你的token",
+  "company_from": "替换成你的企业标识",
+  "mcp_base_url": "https://mcp.lexiang-app.com/mcp?preset=all",
+  "credential_help_url": "https://lexiangla.com/ai/claw"
+}
+```
+
+**字段说明**：
+
+| 字段 | 必填 | 说明 |
+|------|:---:|------|
+| `mcp_token` | ✅ | 第 2 步获取的 token |
+| `company_from` | ✅ | 第 2 步获取的企业标识 |
+| `mcp_base_url` | 否 | MCP 接口地址，**私有化环境必改**（换成自己域名，见下方「私有化环境配置」）；公有云用户保持默认或删掉此字段均可 |
+| `credential_help_url` | 否 | 凭证帮助页地址，私有化环境可换成内部说明页；一般不用改 |
+
 **新手常见错误**：
 - JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
-- 两个值缺一不可，少了会报 `凭证缺少字段：xxx`
+- 两个必填值缺一不可，少了会报 `凭证缺少字段：xxx`
 - `chmod 600` 是把文件权限设为仅本人可读，防止凭证被其他用户读取，建议保留
-- `config/` 目录已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
+- `config/` 目录（模板 `config.example.json` 除外）已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
 
 #### 多账号配置（可选）
 
@@ -95,7 +109,7 @@ chmod 600 config/profiles/myorg.json
 
 #### 私有化环境配置（可选）
 
-脚本默认连公有云（`https://mcp.lexiang-app.com/mcp`）。在**乐享私有化环境**运行时，在凭证文件里加 `mcp_base_url` 字段指向私有化 MCP 接口（向私有化环境管理员获取）：
+脚本默认连公有云（`https://mcp.lexiang-app.com/mcp`）。在**乐享私有化环境**运行时，把凭证文件里的 `mcp_base_url` 字段换成私有化 MCP 接口地址（向私有化环境管理员获取）——直接改 `config/config.example.json` 复制出来的那份即可：
 
 ```json
 {

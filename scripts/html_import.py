@@ -184,11 +184,12 @@ def load_credential(profile: str | None, credential_file: str | None) -> Persona
             f"凭证文件不存在：{path}\n"
             f"请访问 {DEFAULT_CREDENTIAL_HELP_URL} 获取凭证"
             f"（私有化环境请咨询管理员获取本环境的凭证与接口地址），"
-            f"然后执行（配置默认放在 skill 目录下）：\n"
-            f"  mkdir -p {CONFIG_DIR} && "
-            f"cat > {CONFIG_DIR / 'credentials.json'} << 'EOF'\n"
-            f'  {{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}}\n'
-            f"  EOF\n"
+            f"然后复制模板修改（配置默认放在 skill 目录下）：\n"
+            f"  cp {CONFIG_DIR / 'config.example.json'} "
+            f"{CONFIG_DIR / 'credentials.json'}\n"
+            f"  编辑 {CONFIG_DIR / 'credentials.json'}，"
+            f"替换 mcp_token / company_from"
+            f"（私有化环境同时替换 mcp_base_url 为自己的域名）\n"
             f"  chmod 600 {CONFIG_DIR / 'credentials.json'}\n"
             f"多账号：凭证放到 {PROFILE_CREDENTIALS_DIR}/<name>.json，用 --profile <name> 指定"
         )

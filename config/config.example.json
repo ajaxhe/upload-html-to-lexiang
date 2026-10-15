@@ -1,0 +1,6 @@
+{
+  "mcp_token": "lxmcp_替换成你的token",
+  "company_from": "替换成你的企业标识",
+  "mcp_base_url": "https://mcp.lexiang-app.com/mcp?preset=all",
+  "credential_help_url": "https://lexiangla.com/ai/claw"
+}
