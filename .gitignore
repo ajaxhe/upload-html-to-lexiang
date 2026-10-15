@@ -12,5 +12,5 @@ output/
 
 # 凭证与上传状态（含 token / entry_id，严禁入库）；模板文件除外
 config/*
-!config/config.example.json
+!config/credentials.example.json
 manifests/

@@ -57,10 +57,10 @@ cd upload-html-to-lexiang
 
 #### 第 3 步：写入配置文件
 
-仓库自带配置模板 `config/config.example.json`，复制一份再填入真实值即可（在本仓库根目录执行）：
+仓库自带配置模板 `config/credentials.example.json`，复制一份命名为 `credentials.json` 再填入真实值即可（在本仓库根目录执行）：
 
 ```bash
-cp config/config.example.json config/credentials.json
+cp config/credentials.example.json config/credentials.json
 chmod 600 config/credentials.json
 ```
 
@@ -88,7 +88,7 @@ chmod 600 config/credentials.json
 - JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
 - 两个必填值缺一不可，少了会报 `凭证缺少字段：xxx`
 - `chmod 600` 是把文件权限设为仅本人可读，防止凭证被其他用户读取，建议保留
-- `config/` 目录（模板 `config.example.json` 除外）已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
+- `config/` 目录（模板 `credentials.example.json` 除外）已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
 
 #### 多账号配置（可选）
 
@@ -109,7 +109,7 @@ chmod 600 config/profiles/myorg.json
 
 #### 私有化环境配置（可选）
 
-脚本默认连公有云（`https://mcp.lexiang-app.com/mcp`）。在**乐享私有化环境**运行时，把凭证文件里的 `mcp_base_url` 字段换成私有化 MCP 接口地址（向私有化环境管理员获取）——直接改 `config/config.example.json` 复制出来的那份即可：
+脚本默认连公有云（`https://mcp.lexiang-app.com/mcp`）。在**乐享私有化环境**运行时，把凭证文件里的 `mcp_base_url` 字段换成私有化 MCP 接口地址（向私有化环境管理员获取）——直接改 `config/credentials.json`（由 `credentials.example.json` 复制而来）里的对应字段即可：
 
 ```json
 {

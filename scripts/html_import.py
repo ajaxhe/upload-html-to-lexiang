@@ -185,7 +185,7 @@ def load_credential(profile: str | None, credential_file: str | None) -> Persona
             f"请访问 {DEFAULT_CREDENTIAL_HELP_URL} 获取凭证"
             f"（私有化环境请咨询管理员获取本环境的凭证与接口地址），"
             f"然后复制模板修改（配置默认放在 skill 目录下）：\n"
-            f"  cp {CONFIG_DIR / 'config.example.json'} "
+            f"  cp {CONFIG_DIR / 'credentials.example.json'} "
             f"{CONFIG_DIR / 'credentials.json'}\n"
             f"  编辑 {CONFIG_DIR / 'credentials.json'}，"
             f"替换 mcp_token / company_from"
