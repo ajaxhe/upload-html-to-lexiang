@@ -36,43 +36,114 @@ git clone https://github.com/ajaxhe/upload-html-to-lexiang.git
 cd upload-html-to-lexiang
 ```
 
-### 2. 配置乐享凭证
+本工具只依赖 Python 3 标准库，**无需安装任何第三方包**。
 
-访问 https://lexiangla.com/ai/claw 获取个人凭证（`lxmcp_` 前缀 token + `company_from`），然后写入凭证文件。配置默认放在**仓库目录下 `config/`**（方便查看和调用）；legacy 路径 `~/.config/lexiang-upload/` 仍自动回退兼容：
+### 2. 配置乐享凭证（一次性，5 分钟）
+
+工具通过乐享 MCP 接口上传文件，需要一个**个人凭证**（包含两个值）。整个配置只需做一次。
+
+#### 第 1 步：打开凭证页面
+
+浏览器访问 <https://lexiangla.com/ai/claw>，用你的企业账号登录（需要所在企业已开通乐享）。
+
+#### 第 2 步：复制两个值
+
+在页面上获取以下两个值：
+
+| 值 | 长什么样 | 说明 |
+|----|---------|------|
+| `mcp_token` | `lxmcp_` 开头的一长串字符 | 接口访问令牌，**相当于密码，不要泄露给他人** |
+| `company_from` | 一个短字符串（如 `mycompany`） | 你的企业标识，用来路由到正确的企业 |
+
+#### 第 3 步：写入配置文件
+
+在本仓库根目录下执行（把两个值替换成第 2 步复制的真实值）：
 
 ```bash
-mkdir -p config && cat > config/credentials.json << 'EOF'
-{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
+mkdir -p config
+cat > config/credentials.json << 'EOF'
+{
+  "mcp_token": "lxmcp_替换成你的token",
+  "company_from": "替换成你的企业标识"
+}
 EOF
 chmod 600 config/credentials.json
 ```
 
-多账号用命名 profile：
+**新手常见错误**：
+- JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
+- 两个值缺一不可，少了会报 `凭证缺少字段：xxx`
+- `chmod 600` 是把文件权限设为仅本人可读，防止凭证被其他用户读取，建议保留
+- `config/` 目录已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
+
+#### 多账号配置（可选）
+
+只有一个账号时，用上面的 `config/credentials.json` 即可（默认）。如果你有**多个企业**的凭证，用命名 profile 区分：
 
 ```bash
-mkdir -p config/profiles && cat > config/profiles/myorg.json << 'EOF'
-{"mcp_token": "lxmcp_你的token", "company_from": "你的企业标识"}
+mkdir -p config/profiles
+cat > config/profiles/myorg.json << 'EOF'
+{
+  "mcp_token": "lxmcp_替换成token",
+  "company_from": "替换成企业标识"
+}
 EOF
 chmod 600 config/profiles/myorg.json
 ```
 
-> `config/` 与 `manifests/` 已在 `.gitignore` 中排除，凭证和上传状态不会被提交到 git。
+使用时加 `--profile myorg` 指定；不加 `--profile` 时始终读默认的 `config/credentials.json`。
+
+#### 配置文件放在哪里？（优先级从高到低）
+
+| 位置 | 何时读取 |
+|------|---------|
+| `--credential-file <路径>` | 命令行显式指定时 |
+| `config/profiles/<名字>.json` | 指定 `--profile <名字>` 时 |
+| `config/credentials.json` | 默认 |
+| `~/.config/lexiang-upload/` 同名结构 | 上面都不存在时的兼容回退（老版本路径） |
+
+#### 如何验证配置是否成功？
+
+先跑一个不需要凭证的预检（验证环境）：
+
+```bash
+python3 scripts/html_import.py samples/01-基础富文本结构.html --dry-run --json
+```
+
+预检通过后，找一个小 HTML 文件真实上传一次（验证凭证）。常见报错对照：
+
+| 报错信息 | 原因与解决办法 |
+|---------|---------------|
+| `凭证文件不存在：...` | 还没做第 3 步，或文件路径/文件名不对 |
+| `凭证缺少字段：mcp_token` | JSON 里少了字段，或引号写成了中文引号 |
+| `乐享凭证无效或已过期（401）` | token 失效了，回到 <https://lexiangla.com/ai/claw> 重新获取并更新配置文件 |
 
 ## 使用
+
+### 找到上传目标（--target-url 怎么填）
+
+打开乐享网页版，进入你想上传到的**目录（文件夹）**页面，复制浏览器地址栏的完整 URL，形如：
+
+```
+https://你的企业域名.lexiangla.com/pages/一串字母数字?company_from=你的企业标识
+```
+
+把这个 URL 原样传给 `--target-url` 即可，工具会自动解析出目标目录。
 
 ### 单个 HTML 文件
 
 ```bash
 python3 scripts/html_import.py report.html \
-  --target-url "https://lexiangla.com/pages/<目录entry_id>?company_from=abc" \
-  --profile myorg
+  --target-url "https://你的企业域名.lexiangla.com/pages/<目录entry_id>?company_from=你的企业标识"
 ```
+
+> 工具会**自动判断**上传方式：HTML 没有引用本地文件 → 直接上传 HTML 源文件（可预览）；引用了本地图片/视频/CSS 等相对路径资源 → 自动打包 ZIP bundle 上传。
 
 ### 目录下所有 HTML（每个成为独立条目）
 
 ```bash
 python3 scripts/html_import.py ./html-dir \
-  --target-url "https://lexiangla.com/pages/<目录entry_id>?company_from=abc" \
+  --target-url "https://你的企业域名.lexiangla.com/pages/<目录entry_id>?company_from=你的企业标识" \
   --profile myorg --json
 ```
 
@@ -80,11 +151,13 @@ python3 scripts/html_import.py ./html-dir \
 
 文档已在乐享、内容有变更时用。**不加 `--entry-id` 重传会在同目录堆出同名重复条目**（乐享不会自动合并）。
 
+`--entry-id` 的取法：打开乐享里那个文档，地址栏 `/pages/` 后面的一串字母数字就是它的 entry_id。
+
 ```bash
 python3 scripts/html_import.py report.html \
   --entry-id "<该条目自身的 entry_id，取自 /pages/<id>>" \
   --name "条目名（建议与现有条目一致，避免改名）" \
-  --raw --force --profile myorg --json
+  --force --profile myorg --json
 ```
 
 ### 预检模式（只检测打包不上传）
@@ -174,9 +247,9 @@ report.zip
 
 | 方式 | 工具 | entry_type | 适用场景 |
 |------|------|-----------|---------|
-| **本工具**：ZIP bundle | `file_apply_upload`(extension=html) | file | HTML + 相对路径资源 |
+| **本工具**：自动判断（raw 直传 / ZIP bundle） | `file_apply_upload` | file | 单 HTML 直传可预览；带相对资源打包 bundle |
 | Markdown 图文 | upload-markdown-to-lexiang | page | Markdown 转乐享在线页面 |
-| 纯 HTML 文本 | `entry_import_content`(content_type=html) | page | 无本地资源的 HTML 转页面 |
+| 纯 HTML 文本 | `entry_import_content`(content_type=html) | page | 无本地资源的 HTML 转可编辑页面 |
 
 ## 幂等与增量
 
@@ -212,7 +285,7 @@ python3 scripts/html_import.py report.html --target-url "..." --profile myorg --
 
 ## 测试样本
 
-仓库内置 `samples/` 目录，提供 8 个覆盖不同场景的 HTML 测试文件及其 `assets/` 资源：
+仓库内置 `samples/` 目录，提供 9 个覆盖不同场景的 HTML 测试文件及其 `assets/` 资源：
 
 | 文件 | 测试重点 | 依赖 assets |
 |------|---------|:-----------:|
@@ -224,8 +297,9 @@ python3 scripts/html_import.py report.html --target-url "..." --profile myorg --
 | `06-混合内容综合.html` | 图片+附件混合 | 是 |
 | `07-样式与脚本.html` | 外部 CSS/JS | 是 |
 | `08-乐享原生HTML格式.html` | lx-* 格式回环导入 | 否 |
+| `09-视频-相对路径.html` | 本地相对路径视频（video/source/poster） | 是 |
 
-`assets/` 含 5 种格式图片（png/jpg/gif/webp/svg）和 4 种附件（txt/csv/pdf/zip）+ CSS/JS。
+`assets/` 含 5 种格式图片（png/jpg/gif/webp/svg）、测试视频（mp4）、4 种附件（txt/csv/pdf/zip）和 CSS/JS。
 
 ```bash
 # 用样本预检（不需凭证）
@@ -233,8 +307,7 @@ python3 scripts/html_import.py samples/ --dry-run --json
 
 # 用样本实际上传（需配置凭证）
 python3 scripts/html_import.py samples/04-图片-相对路径.html \
-  --target-url "https://lexiangla.com/pages/<目录entry_id>?company_from=abc" \
-  --profile myorg
+  --target-url "https://你的企业域名.lexiangla.com/pages/<目录entry_id>?company_from=你的企业标识"
 ```
 
 ## 限制
