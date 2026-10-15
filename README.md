@@ -60,8 +60,7 @@ cd upload-html-to-lexiang
 每个账号一个子目录，默认账号放在 `config/default/`。复制模板到默认账号目录，再填入真实值（在本仓库根目录执行）：
 
 ```bash
-mkdir -p config/default
-cp config/config.example.json config/default/config.json
+cp config/default/config.example.json config/default/config.json
 chmod 600 config/default/config.json
 ```
 
@@ -93,7 +92,7 @@ chmod 600 config/default/config.json
 - JSON 里的引号必须是**英文双引号** `"`，不能用中文引号 `“”`
 - 两个必填值缺一不可，少了会报 `凭证缺少字段：xxx`
 - `chmod 600` 是把文件权限设为仅本人可读，防止凭证被其他用户读取，建议保留
-- `config/` 目录（模板 `config.example.json` 除外）已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
+- 除模板 `config/default/config.example.json` 外，`config/` 下所有账号配置已被 `.gitignore` 排除，凭证**不会被提交到 git 仓库**，放心填写
 
 #### 多账号配置（可选）
 
@@ -101,7 +100,7 @@ chmod 600 config/default/config.json
 
 ```bash
 mkdir -p config/myorg
-cp config/config.example.json config/myorg/config.json
+cp config/default/config.example.json config/myorg/config.json
 chmod 600 config/myorg/config.json
 # 然后编辑 config/myorg/config.json 填入该账号的值
 ```
@@ -256,9 +255,7 @@ report.zip
 
 > **上传模式自动判断（默认）**：无本地相对路径资源 → 直传 HTML 源文件（`name=<标题>.html` + `mime_type=text/html`），可直接预览；有相对路径资源 → ZIP bundle 打包（`name=<标题>.zip` + `mime_type=application/zip` + `extension=html`），服务端解包转换后预览。`--raw` / `--bundle` 可强制覆盖。
 >
-> ⚠️ **ZIP bundle 有 20MB 大小限制**（乐享后端限制，2026-10-15 确认）：超限上传会被服务端拒绝。脚本在打包后自动预检：`--dry-run` 会标记 `oversize: true` 并警告；实际上传超限直接本地报错并给出解决办法（压缩图片/视频、拆分文档、大文件单独上传后外链引用）。
->
-> ⚠️ 2026-10-15 实测：小 zip（几 KB）也在 commit 阶段报 `50090009 导入任务失败`，已反馈乐享团队排查（大小只是该错误码的触发条件之一）。**不要用 `.html` 名绕过**——那会把 zip 字节原样存成 `.html` 文件，commit 成功但预览必坏。临时替代：小资源可转 data URI 内联后走 raw 直传。
+> ⚠️ **ZIP bundle 有 20MB 大小限制**（乐享后端限制）：超限上传会被服务端拒绝。脚本在打包后自动预检：`--dry-run` 会标记 `oversize: true` 并警告；实际上传超限直接本地报错并给出解决办法（压缩图片/视频、拆分文档、大文件单独上传后外链引用）。
 >
 > MCP 网关要求 URL 带 `preset=all` 参数才返回全量业务工具（本工具已内置）。
 

@@ -25,7 +25,7 @@ description: >-
 
 1. 只使用从 <https://lexiangla.com/ai/claw> 获取的个人凭证（`lxmcp_` 前缀 MCP API Token）。
 2. 配置文件（凭证 + 端点 + 目的端，每账号一个子目录）：**默认 `config/default/config.json`**，多账号 `config/<profile>/config.json`（`--profile <name>` 指定），权限 0600。格式：`{"mcp_token": "lxmcp_xxx", "company_from": "xxx"}` + 可选字段：`mcp_base_url`（私有化 MCP 接口地址，endpoint 跟凭证走不硬编码；不配 = 公有云 `https://mcp.lexiang-app.com/mcp`；可自带 query 参数如 `?preset=all`，拼接时保留已配参数并自动确保 `preset=all` 与 `company_from` 存在）、`credential_help_url`、`target_entry_id`（默认目标目录，CLI 优先）、`target_space_id`（无 entry_id 时自动解析知识库根目录）。legacy 自动回退：`config/credentials.json`、`config/profiles/<name>.json`、`~/.config/lexiang-upload/` 同名结构。命令行 `--mcp-base-url` 可临时覆盖（优先级：CLI > 配置文件 > 默认）。
-3. **上传模式自动判断（默认 auto，2026-10-15 起）**：先检测 HTML 是否引用本地相对路径资源——**无依赖 → raw 直传 HTML 源文件**（`mime_type=text/html`、`name=<标题>.html`，可直接预览）；**有依赖 → ZIP bundle 打包**（主文件改名 `index.html` + 资源保持相对路径，`extension=html` 标记，服务端解包转换）。`--raw` / `--bundle` 可强制覆盖。
+3. **上传模式自动判断（默认 auto）**：先检测 HTML 是否引用本地相对路径资源——**无依赖 → raw 直传 HTML 源文件**（`mime_type=text/html`、`name=<标题>.html`，可直接预览）；**有依赖 → ZIP bundle 打包**（主文件改名 `index.html` + 资源保持相对路径，`extension=html` 标记，服务端解包转换）。`--raw` / `--bundle` 可强制覆盖。
 4. bundle 必须传 `extension=html`（区分普通 zip 和 HTML bundle）。
 5. `file_apply_upload` 的 `name` 参数用原文档标题（取自 HTML `<title>` 或 `--name`）：raw 模式后缀 `.html`；**bundle 模式后缀必须是 `.zip`**（`<标题>.zip`）——`.zip` 名 + `extension=html` 才会走服务端 HTML bundle 解包转换管道。
 6. 缺失资源**不静默丢弃**：降级为 `[资源缺失：xxx]` 占位提示文本写进 index.html。
@@ -33,8 +33,7 @@ description: >-
 8. stdout 只输出 JSON，诊断和进度输出到 stderr。
 9. **乐享 MCP 网关（元工具）模式与 preset=all**：2026-10 起乐享 MCP 服务端要求 MCP URL 带 `preset=all` 查询参数，`tools/list` 才返回全量业务工具（93 个）；不带时只有 `call_tool` 等 7 个元工具，业务工具（`file_apply_upload` / `file_commit_upload` / `entry_describe_entry`）直呼会返回 HTTP 200 + 文本 `tool is not allowed: <tool>`（不是 JSON-RPC error）。`MCPClient.url` 已内置 `preset=all`。同时保留 `MCPClient._request` 兜底：万一业务工具仍被拒（返回 `tool is not allowed`），自动改走 `call_tool`（`{tool_name, arguments}`）转发。⚠️ **元工具（`get_tool_schema`）不能经 `call_tool` 调**（返回 `cannot call meta tool`），故兜底只在业务工具被拒时触发，**不要无条件转发**。
 10. **更新已有条目必须传 `--entry-id`**：不传就是新建，重传会在同目录堆出同名条目（乐享不会自动合并）。
-11. **bundle 大小限制 20MB（2026-10-15 乐享团队确认）**：HTML bundle 的 zip 包不能超过 20MB，超限 `file_commit_upload` 报 `50090009 导入任务失败`。脚本已内置本地预检：dry-run 标记 `oversize: true` 并警告；实际上传超限直接本地报错（含最大资源提示与解决办法：压缩图片/视频、拆分文档、大文件单独上传后外链引用），不发无效请求。⚠️ **待确认**：1.7KB~243KB 的小 zip 同样报 50090009（2026-10-15 多次实测），说明 50090009 是通用「导入任务失败」错误码、大小只是触发条件之一，小 zip 失败另有原因（已反馈乐享团队排查）。
-12. ⚠️ **不要用 `.html` 名绕过 bundle 报错**——那会跳过解包管道、把 zip 字节原样存成 `.html` 文件，commit 虽成功但**预览必坏**（2026-10-15 实测下载确认 PK 头）。带资源场景的临时替代：把相对路径资源转 data URI 内联进 HTML 后自动走 raw 直传（小图片/CSS 可行，大视频不现实）。
+11. **bundle 大小限制 20MB（乐享后端限制）**：HTML bundle 的 zip 包不能超过 20MB，超限上传会被服务端拒绝。脚本已内置本地预检：dry-run 标记 `oversize: true` 并警告；实际上传超限直接本地报错（含最大资源提示与解决办法：压缩图片/视频、拆分文档、大文件单独上传后外链引用），不发无效请求。
 
 ## 上传流程（三步）
 
@@ -106,8 +105,7 @@ bundle 模式（有相对路径依赖，自动选择）：
 2. 复制模板到账号目录并填值（skill 目录按实际路径替换；默认账号为 `default`）：
 
 ```bash
-mkdir -p <skill-dir>/config/default
-cp <skill-dir>/config/config.example.json <skill-dir>/config/default/config.json
+cp <skill-dir>/config/default/config.example.json <skill-dir>/config/default/config.json
 # 编辑 config/default/config.json 替换 mcp_token / company_from
 chmod 600 <skill-dir>/config/default/config.json
 ```
@@ -116,7 +114,7 @@ chmod 600 <skill-dir>/config/default/config.json
 
 ```bash
 mkdir -p <skill-dir>/config/myorg
-cp <skill-dir>/config/config.example.json <skill-dir>/config/myorg/config.json
+cp <skill-dir>/config/default/config.example.json <skill-dir>/config/myorg/config.json
 # 编辑 config/myorg/config.json 填入该账号的值
 chmod 600 <skill-dir>/config/myorg/config.json
 ```
