@@ -20,8 +20,9 @@
   --keep    上传成功后保留测试条目（默认自动删除，避免留垃圾）
   --zip 20  可选：用随机数据把 zip 撑到指定 MB 数，测试大小限制场景
 
-仅依赖 Python 3 标准库；凭证复用 html_import 的加载逻辑
-（config/credentials.json 或 config/profiles/<name>.json，含 mcp_base_url 支持）。
+仅依赖 Python 3 标准库；配置复用 html_import 的加载逻辑
+（config/<profile>/config.json，默认 config/default/，支持 mcp_base_url /
+target_space_id / target_entry_id 可选字段；legacy 路径自动回退）。
 """
 from __future__ import annotations
 
@@ -225,8 +226,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--parent-entry-id", help="目标父节点 entry_id")
     parser.add_argument("--target-url", help="乐享目标目录 URL（自动解析 entry_id）")
-    parser.add_argument("--profile", help="凭证 profile（如 csig）")
-    parser.add_argument("--credential-file", help="凭证文件路径")
+    parser.add_argument("--profile", help="账号 profile，对应 config/<名字>/ 目录")
+    parser.add_argument("--config-file", "--credential-file", dest="config_file",
+                        help="配置文件路径（--credential-file 为兼容别名）")
     parser.add_argument("--mcp-base-url", help="覆盖 MCP 接口地址（调试用）")
     parser.add_argument("--keep", action="store_true",
                         help="上传成功后保留测试条目（默认自动删除）")

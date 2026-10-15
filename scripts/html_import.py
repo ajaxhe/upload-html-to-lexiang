@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
-"""Upload HTML files (with local relative-path resources) to Tencent Lexiang.
+"""Upload HTML files to Tencent Lexiang (auto mode: raw direct upload or ZIP bundle).
 
-Resolves the core pain point: HTML referencing local images/assets via relative
-paths cannot be imported as a standalone file (resources lost). This tool
-packages each HTML + its resources into a ZIP bundle (main file renamed to
-index.html), then drives the standard three-step Lexiang file upload flow:
+Upload mode is auto-detected: a self-contained HTML (no local relative-path
+references) is uploaded as the original .html file (text/html, previewable);
+an HTML referencing local resources via relative paths is packaged with all
+of them into a ZIP bundle (main file renamed to index.html), which resolves
+the core pain point: such HTML cannot be imported as a standalone file
+(resources lost). Both modes drive the standard three-step Lexiang upload:
 
   1. file_apply_upload(extension=html, upload_type=PRE_SIGNED_URL)
      -> returns presigned upload_url + session_id
-  2. HTTP PUT the ZIP to the presigned URL
+  2. HTTP PUT the file to the presigned URL
   3. file_commit_upload(session_id) -> confirms upload, creates entry
 
-The extension=html parameter tells Lexiang that this zip is an HTML bundle
-(not a regular zip file), so relative-path resources inside are resolved
-against index.html at the archive root.
+For bundles, the extension=html parameter tells Lexiang that this zip is an
+HTML bundle (not a regular zip file), so relative-path resources inside are
+resolved against index.html at the archive root.
 
-Credentials are stored in the skill directory by default (config/credentials.json,
-JSON format: {"mcp_token": "lxmcp_xxx", "company_from": "xxx"}), obtained from
-https://lexiangla.com/ai/claw. The legacy location
-~/.config/lexiang-upload/ is still honored as a fallback.
+Config lives in the skill directory: config/<profile>/config.json (default
+profile: config/default/config.json). Required fields: mcp_token + company_from
+(https://lexiangla.com/ai/claw); optional: mcp_base_url, credential_help_url,
+target_space_id, target_entry_id. Legacy locations (config/credentials.json,
+config/profiles/<name>.json, ~/.config/lexiang-upload/) are honored as fallbacks.
 """
 from __future__ import annotations
 
