@@ -48,6 +48,10 @@ CLI_API = "1"
 # 域名天然绑定在同一环境）。
 DEFAULT_CREDENTIAL_HELP_URL = "https://lexiangla.com/ai/claw"
 DEFAULT_MCP_BASE_URL = "https://mcp.lexiang-app.com/mcp"
+# 乐享后端限制：HTML bundle 的 zip 包不能超过 20MB（2026-10-15 乐享团队确认）。
+# 超限会在 file_commit_upload 阶段报 50090009「导入任务失败」——
+# 脚本在打包后本地预检拦截，给出明确报错而非服务端错误码。
+MAX_BUNDLE_ZIP_BYTES = 20 * 1024 * 1024
 
 # 配置默认放在 skill 目录下（方便查看和调用）：
 #   <skill>/config/credentials.json          默认凭证
@@ -750,6 +754,10 @@ def import_one_html(
 
         payload_size = payload_path.stat().st_size
 
+        # 乐享后端限制：HTML bundle zip ≤ 20MB，超限 commit 必报 50090009。
+        # 本地预检拦截：dry-run 标记提示，实际上传直接报错（不发无效请求）。
+        oversize = (not raw) and payload_size > MAX_BUNDLE_ZIP_BYTES
+
         # three-state classification: succeed / degraded / error
         has_degraded = bool(degraded)
         status = "degraded" if has_degraded else "ok"
@@ -769,10 +777,40 @@ def import_one_html(
         }
         if entry_id:
             record["target_entry_id"] = entry_id
+        if oversize:
+            record["oversize"] = True
 
         if dry_run:
-            record["message"] = "dry-run 完成，未实际上传"
+            if oversize:
+                record["message"] = (
+                    f"dry-run 完成（⚠️ zip {payload_size / 1024 / 1024:.1f}MB "
+                    f"超过乐享后端 20MB 限制，实际上传会被拒绝；"
+                    f"请压缩图片/视频或拆分文档）"
+                )
+            else:
+                record["message"] = "dry-run 完成，未实际上传"
             return record
+
+        if oversize:
+            # 按资源体积给出最大资源提示，帮助定位该压缩什么
+            big_hint = ""
+            try:
+                sizes = []
+                for ref in included:
+                    src = resolve_resource(html_path, ref)
+                    if src and src.is_file():
+                        sizes.append(src.stat().st_size)
+                sizes.sort(reverse=True)
+                if sizes and sizes[0] > 1024 * 1024:
+                    big_hint = f"（最大单个资源 {sizes[0] / 1024 / 1024:.1f}MB）"
+            except OSError:
+                pass
+            raise MCPError(
+                f"ZIP bundle 大小 {payload_size / 1024 / 1024:.1f}MB "
+                f"超过乐享后端限制 20MB{big_hint}。"
+                f"解决办法：压缩图片/视频、拆分文档为多个条目、"
+                f"或把大文件单独上传后用外链引用"
+            )
 
         if client is None:
             raise MCPError("内部错误：非 dry-run 模式必须提供 MCPClient")

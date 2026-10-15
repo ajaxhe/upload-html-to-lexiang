@@ -236,7 +236,9 @@ report.zip
 
 > **上传模式自动判断（默认）**：无本地相对路径资源 → 直传 HTML 源文件（`name=<标题>.html` + `mime_type=text/html`），可直接预览；有相对路径资源 → ZIP bundle 打包（`name=<标题>.zip` + `mime_type=application/zip` + `extension=html`），服务端解包转换后预览。`--raw` / `--bundle` 可强制覆盖。
 >
-> ⚠️ 2026-10-15 实测：服务端 HTML bundle 解包管道故障（`name=.zip + extension=html` 在 commit 阶段报 `50090009 导入任务失败`）。**不要用 `.html` 名绕过**——那会把 zip 字节原样存成 `.html` 文件，commit 成功但预览必坏。临时替代：小资源可转 data URI 内联后走 raw 直传。
+> ⚠️ **ZIP bundle 有 20MB 大小限制**（乐享后端限制，2026-10-15 确认）：超限上传会被服务端拒绝。脚本在打包后自动预检：`--dry-run` 会标记 `oversize: true` 并警告；实际上传超限直接本地报错并给出解决办法（压缩图片/视频、拆分文档、大文件单独上传后外链引用）。
+>
+> ⚠️ 2026-10-15 实测：小 zip（几 KB）也在 commit 阶段报 `50090009 导入任务失败`，已反馈乐享团队排查（大小只是该错误码的触发条件之一）。**不要用 `.html` 名绕过**——那会把 zip 字节原样存成 `.html` 文件，commit 成功但预览必坏。临时替代：小资源可转 data URI 内联后走 raw 直传。
 >
 > MCP 网关要求 URL 带 `preset=all` 参数才返回全量业务工具（本工具已内置）。
 

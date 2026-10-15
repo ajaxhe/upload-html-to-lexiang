@@ -33,7 +33,8 @@ description: >-
 8. stdout 只输出 JSON，诊断和进度输出到 stderr。
 9. **乐享 MCP 网关（元工具）模式与 preset=all**：2026-10 起乐享 MCP 服务端要求 MCP URL 带 `preset=all` 查询参数，`tools/list` 才返回全量业务工具（93 个）；不带时只有 `call_tool` 等 7 个元工具，业务工具（`file_apply_upload` / `file_commit_upload` / `entry_describe_entry`）直呼会返回 HTTP 200 + 文本 `tool is not allowed: <tool>`（不是 JSON-RPC error）。`MCPClient.url` 已内置 `preset=all`。同时保留 `MCPClient._request` 兜底：万一业务工具仍被拒（返回 `tool is not allowed`），自动改走 `call_tool`（`{tool_name, arguments}`）转发。⚠️ **元工具（`get_tool_schema`）不能经 `call_tool` 调**（返回 `cannot call meta tool`），故兜底只在业务工具被拒时触发，**不要无条件转发**。
 10. **更新已有条目必须传 `--entry-id`**：不传就是新建，重传会在同目录堆出同名条目（乐享不会自动合并）。
-11. ⚠️ **bundle 模式已知服务端故障（2026-10-15 实测）**：`name=.zip + extension=html` 的 bundle 在 `file_commit_upload` 阶段报 `50090009 导入任务失败`（服务端 HTML bundle 解包管道故障，非本地参数问题）。⚠️ **不要用 `.html` 名绕过**——那会跳过解包管道、把 zip 字节原样存成 `.html` 文件，commit 虽成功但**预览必坏**。带资源场景的临时替代：把相对路径资源转 data URI 内联进 HTML 后自动走 raw 直传（小图片/CSS 可行，大视频不现实）。
+11. **bundle 大小限制 20MB（2026-10-15 乐享团队确认）**：HTML bundle 的 zip 包不能超过 20MB，超限 `file_commit_upload` 报 `50090009 导入任务失败`。脚本已内置本地预检：dry-run 标记 `oversize: true` 并警告；实际上传超限直接本地报错（含最大资源提示与解决办法：压缩图片/视频、拆分文档、大文件单独上传后外链引用），不发无效请求。⚠️ **待确认**：1.7KB~243KB 的小 zip 同样报 50090009（2026-10-15 多次实测），说明 50090009 是通用「导入任务失败」错误码、大小只是触发条件之一，小 zip 失败另有原因（已反馈乐享团队排查）。
+12. ⚠️ **不要用 `.html` 名绕过 bundle 报错**——那会跳过解包管道、把 zip 字节原样存成 `.html` 文件，commit 虽成功但**预览必坏**（2026-10-15 实测下载确认 PK 头）。带资源场景的临时替代：把相对路径资源转 data URI 内联进 HTML 后自动走 raw 直传（小图片/CSS 可行，大视频不现实）。
 
 ## 上传流程（三步）
 
