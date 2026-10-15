@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>测试09 - 本地视频相对路径</title>
+  <meta name="description" content="验证 HTML bundle 内嵌本地视频（video/source/track）上传乐享后可预览播放"/>
+</head>
+<body>
+  <h1>测试09 - 本地视频相对路径</h1>
+  <p>本页验证：HTML 引用本地相对路径视频（<code>assets/local-video.mp4</code>），打包为 ZIP bundle（extension=html）上传乐享后，视频在预览中可正常播放。</p>
+
+  <h2>1. video 标签 + controls</h2>
+  <video width="640" height="360" controls preload="metadata">
+    <source src="assets/local-video.mp4" type="video/mp4">
+    您的浏览器不支持 video 标签。
+  </video>
+
+  <h2>2. video 直接 src 引用</h2>
+  <video src="assets/local-video.mp4" controls preload="none" width="480"></video>
+
+  <h2>3. 视频封面图（poster）+ 配图</h2>
+  <video width="480" height="270" controls poster="assets/local-image.png">
+    <source src="assets/local-video.mp4" type="video/mp4">
+  </video>
+  <p><img src="assets/local-image.jpg" alt="配图" width="320"></p>
+
+  <h2>4. 音频引用（顺带验证）</h2>
+  <p>（无独立音频文件，跳过）</p>
+
+  <h2>检查点</h2>
+  <ul>
+    <li>视频文件 <code>assets/local-video.mp4</code> 是否随 bundle 打包</li>
+    <li>预览页中 video 播放器是否出现且可播放</li>
+    <li>poster 封面图是否正常显示</li>
+  </ul>
+</body>
+</html>
